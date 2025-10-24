@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포켓몬스터 Yellow 버전</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #game-container {
+            background: #fff;
+            border: 8px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        #game-canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        #battle-ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            border: 4px solid #000;
+            padding: 20px;
+            display: none;
+            width: 600px;
+            border-radius: 10px;
+        }
+
+        .battle-info {
+            background: #f0f0f0;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid #000;
+        }
+
+        .battle-actions button {
+            background: #ff0;
+            border: 3px solid #000;
+            padding: 15px 30px;
+            margin: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .battle-actions button:hover {
+            background: #ffff00;
+            transform: scale(1.05);
+        }
+
+        .battle-actions button:active {
+            transform: scale(0.95);
+        }
+
+        #message-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff;
+            border: 4px solid #000;
+            padding: 15px 20px;
+            min-width: 500px;
+            display: none;
+            border-radius: 8px;
+            font-size: 18px;
+        }
+
+        .hp-bar {
+            width: 100%;
+            height: 20px;
+            background: #ddd;
+            border: 2px solid #000;
+            margin: 5px 0;
+            position: relative;
+        }
+
+        .hp-fill {
+            height: 100%;
+            background: linear-gradient(to bottom, #0f0, #0c0);
+            transition: width 0.3s;
+        }
+
+        .hp-fill.low {
+            background: linear-gradient(to bottom, #ff0, #cc0);
+        }
+
+        .hp-fill.critical {
+            background: linear-gradient(to bottom, #f00, #c00);
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas" width="800" height="600"></canvas>
+    </div>
+
+    <div id="battle-ui">
+        <h2 style="text-align: center; margin-bottom: 20px;">전투!</h2>
+        <div class="battle-info">
+            <div id="enemy-pokemon">적 포켓몬</div>
+            <div class="hp-bar">
+                <div class="hp-fill" id="enemy-hp" style="width: 100%"></div>
+            </div>
+            <div id="enemy-hp-text">HP: 100/100</div>
+        </div>
+        <div class="battle-info">
+            <div id="player-pokemon">내 피카츄</div>
+            <div class="hp-bar">
+                <div class="hp-fill" id="player-hp" style="width: 100%"></div>
+            </div>
+            <div id="player-hp-text">HP: 100/100</div>
+        </div>
+        <div class="battle-actions">
+            <button onclick="game.battle.attack()">공격</button>
+            <button onclick="game.battle.useItem()">도구</button>
+            <button onclick="game.battle.switchPokemon()">포켓몬 교체</button>
+            <button onclick="game.battle.run()">도망</button>
+        </div>
+        <div id="battle-message" style="margin-top: 15px; padding: 10px; background: #ffe; border: 2px solid #000;"></div>
+    </div>
+
+    <div id="message-box"></div>
+
+    <script src="game.js"></script>
+</body>
+</html>
