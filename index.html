@@ -12,7 +12,7 @@
         }
 
         body {
-            background: #1a1a1a;
+            background: #000;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -21,46 +21,20 @@
             overflow: hidden;
         }
 
-        #game-container {
-            background: #9bbc0f;
-            border: 16px solid #444;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8),
-                        inset 0 0 0 4px #666;
-            position: relative;
-        }
-
         #game-canvas {
             display: block;
             image-rendering: pixelated;
             image-rendering: -moz-crisp-edges;
             image-rendering: crisp-edges;
-        }
-
-        .power-led {
-            position: absolute;
-            top: -40px;
-            right: 20px;
-            width: 12px;
-            height: 12px;
-            background: #ff0000;
-            border-radius: 50%;
-            box-shadow: 0 0 10px #ff0000;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+            background: #000;
         }
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <div class="power-led"></div>
-        <canvas id="game-canvas" width="640" height="576"></canvas>
-    </div>
-
+    <canvas id="game-canvas"></canvas>
     <script src="game.js"></script>
 </body>
 </html>
