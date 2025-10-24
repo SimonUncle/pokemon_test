@@ -1,97 +1,101 @@
-// 포켓몬스터 Yellow 버전 게임
-class PokemonGame {
+// 포켓몬스터 Yellow 버전 - Game Boy Style
+// Game Boy Color 팔레트
+const GB_COLORS = {
+    LIGHTEST: '#9bbc0f',
+    LIGHT: '#8bac0f',
+    DARK: '#306230',
+    DARKEST: '#0f380f'
+};
+
+class PokemonYellow {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
-        this.tileSize = 32;
-        this.gameState = 'overworld'; // 'overworld' or 'battle'
+        this.scale = 4; // 게임보이 해상도 160x144를 4배 확대
+        this.width = 160;
+        this.height = 144;
 
-        // 플레이어 설정
+        this.gameState = 'overworld'; // 'overworld', 'battle', 'menu'
+        this.textSpeed = 30; // 텍스트 타이핑 속도
+
+        // 플레이어
         this.player = {
-            x: 10,
-            y: 10,
+            x: 8,
+            y: 8,
             direction: 'down',
-            moving: false,
-            sprite: 0
+            sprite: 0,
+            animFrame: 0
         };
 
         // 피카츄 (따라오는 포켓몬)
         this.pikachu = {
-            x: 10,
-            y: 11,
+            x: 8,
+            y: 9,
             direction: 'down',
-            targetX: 10,
-            targetY: 11
+            targetX: 8,
+            targetY: 9,
+            animFrame: 0
         };
 
         // 플레이어 파티
-        this.party = [
-            {
-                name: '피카츄',
-                level: 5,
-                hp: 35,
-                maxHp: 35,
-                attack: 25,
-                defense: 20,
-                speed: 45,
-                type: 'electric',
-                moves: [
-                    { name: '전기충격', power: 40, type: 'electric' },
-                    { name: '몸통박치기', power: 35, type: 'normal' },
-                    { name: '꼬리흔들기', power: 0, type: 'normal' },
-                    { name: '울음소리', power: 0, type: 'normal' }
-                ]
-            }
-        ];
+        this.party = [{
+            name: '피카츄',
+            level: 5,
+            hp: 20,
+            maxHp: 20,
+            attack: 12,
+            defense: 8,
+            speed: 18,
+            exp: 0,
+            type: 'electric'
+        }];
 
-        // 맵 데이터 (0: 풀, 1: 길, 2: 나무, 3: 물, 4: 집, 5: 긴 풀)
+        // 맵 생성 (20x18 타일)
         this.map = this.generateMap();
+        this.tileSize = 8;
 
-        // 걸음 수 카운터
-        this.stepCounter = 0;
+        // 카메라
+        this.camera = { x: 0, y: 0 };
 
-        // 키 입력
+        // 입력
         this.keys = {};
+        this.lastKeyTime = 0;
+        this.keyDelay = 150;
+
+        // 전투 시스템
+        this.battle = null;
+
+        // 컨트롤 설정
         this.setupControls();
 
-        // 배틀 시스템
-        this.battle = new BattleSystem(this);
-
-        // 게임 시작
-        this.gameLoop();
+        // 게임 루프 시작
+        this.lastTime = 0;
+        this.gameLoop(0);
     }
 
     generateMap() {
-        const width = 25;
-        const height = 19;
+        const w = 20, h = 18;
         const map = [];
 
-        for (let y = 0; y < height; y++) {
+        for (let y = 0; y < h; y++) {
             const row = [];
-            for (let x = 0; x < width; x++) {
-                // 외곽 나무
-                if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+            for (let x = 0; x < w; x++) {
+                // 테두리는 나무
+                if (x === 0 || x === w-1 || y === 0 || y === h-1) {
                     row.push(2);
                 }
-                // 길 생성
-                else if ((x >= 8 && x <= 16 && y >= 8 && y <= 12) ||
-                         (x >= 10 && x <= 14 && y >= 5 && y <= 15)) {
+                // 길
+                else if ((x >= 7 && x <= 12 && y >= 7 && y <= 10) ||
+                         (x >= 9 && x <= 10 && y >= 4 && y <= 13)) {
                     row.push(1);
                 }
                 // 집
-                else if ((x >= 3 && x <= 6 && y >= 3 && y <= 5) ||
-                         (x >= 18 && x <= 21 && y >= 3 && y <= 5)) {
+                else if (x >= 3 && x <= 5 && y >= 3 && y <= 5) {
                     row.push(4);
                 }
-                // 물
-                else if (x >= 18 && x <= 22 && y >= 13 && y <= 16) {
+                // 긴 풀 (야생 포켓몬)
+                else if (Math.random() < 0.25 && x > 2 && x < w-2 && y > 2 && y < h-2) {
                     row.push(3);
-                }
-                // 긴 풀 (야생 포켓몬 출현)
-                else if (Math.random() < 0.3 &&
-                         x > 2 && x < width - 3 &&
-                         y > 2 && y < height - 3) {
-                    row.push(5);
                 }
                 // 일반 풀
                 else {
@@ -107,59 +111,64 @@ class PokemonGame {
     setupControls() {
         document.addEventListener('keydown', (e) => {
             this.keys[e.key] = true;
+            const now = Date.now();
 
-            if (this.gameState === 'overworld' && !this.player.moving) {
+            if (this.gameState === 'battle' && this.battle) {
+                this.battle.handleInput(e.key);
+                return;
+            }
+
+            if (this.gameState === 'overworld' && now - this.lastKeyTime > this.keyDelay) {
                 let newX = this.player.x;
                 let newY = this.player.y;
-                let direction = this.player.direction;
+                let moved = false;
 
                 switch(e.key) {
                     case 'ArrowUp':
                     case 'w':
                         newY--;
-                        direction = 'up';
+                        this.player.direction = 'up';
+                        moved = true;
                         break;
                     case 'ArrowDown':
                     case 's':
                         newY++;
-                        direction = 'down';
+                        this.player.direction = 'down';
+                        moved = true;
                         break;
                     case 'ArrowLeft':
                     case 'a':
                         newX--;
-                        direction = 'left';
+                        this.player.direction = 'left';
+                        moved = true;
                         break;
                     case 'ArrowRight':
                     case 'd':
                         newX++;
-                        direction = 'right';
+                        this.player.direction = 'right';
+                        moved = true;
                         break;
                 }
 
-                this.player.direction = direction;
-
-                if (this.canMove(newX, newY)) {
-                    // 피카츄가 플레이어의 이전 위치로 이동
+                if (moved && this.canMove(newX, newY)) {
+                    this.lastKeyTime = now;
                     this.pikachu.targetX = this.player.x;
                     this.pikachu.targetY = this.player.y;
-
                     this.player.x = newX;
                     this.player.y = newY;
-                    this.player.moving = true;
+                    this.player.animFrame = (this.player.animFrame + 1) % 2;
 
-                    this.stepCounter++;
-
-                    // 긴 풀에서 랜덤 인카운터
-                    if (this.map[newY][newX] === 5 && Math.random() < 0.15) {
-                        this.startWildBattle();
-                    }
-
+                    // 피카츄 업데이트
                     setTimeout(() => {
-                        this.player.moving = false;
-                        // 피카츄 실제 위치 업데이트
                         this.pikachu.x = this.pikachu.targetX;
                         this.pikachu.y = this.pikachu.targetY;
-                    }, 150);
+                        this.pikachu.animFrame = (this.pikachu.animFrame + 1) % 2;
+                    }, 75);
+
+                    // 긴 풀에서 랜덤 인카운터
+                    if (this.map[newY][newX] === 3 && Math.random() < 0.1) {
+                        setTimeout(() => this.startBattle(), 200);
+                    }
                 }
             }
         });
@@ -173,83 +182,47 @@ class PokemonGame {
         if (x < 0 || x >= this.map[0].length || y < 0 || y >= this.map.length) {
             return false;
         }
-
         const tile = this.map[y][x];
-        // 나무, 물, 집은 통과 불가
-        return tile !== 2 && tile !== 3 && tile !== 4;
+        return tile !== 2 && tile !== 4; // 나무, 집 통과 불가
     }
 
-    startWildBattle() {
+    startBattle() {
+        this.gameState = 'battle';
         const wildPokemon = this.getRandomWildPokemon();
-        this.battle.start(wildPokemon);
+        this.battle = new Battle(this, wildPokemon);
     }
 
     getRandomWildPokemon() {
-        const wildPokemons = [
-            {
-                name: '꼬렛',
-                level: Math.floor(Math.random() * 3) + 2,
-                type: 'normal',
-                baseHp: 30,
-                baseAttack: 25,
-                baseDefense: 20,
-                baseSpeed: 35
-            },
-            {
-                name: '구구',
-                level: Math.floor(Math.random() * 3) + 2,
-                type: 'normal',
-                baseHp: 40,
-                baseAttack: 22,
-                baseDefense: 18,
-                baseSpeed: 30
-            },
-            {
-                name: '캐터피',
-                level: Math.floor(Math.random() * 3) + 2,
-                type: 'bug',
-                baseHp: 45,
-                baseAttack: 15,
-                baseDefense: 15,
-                baseSpeed: 25
-            },
-            {
-                name: '뿔충이',
-                level: Math.floor(Math.random() * 3) + 2,
-                type: 'bug',
-                baseHp: 40,
-                baseAttack: 18,
-                baseDefense: 16,
-                baseSpeed: 28
-            },
-            {
-                name: '참새',
-                level: Math.floor(Math.random() * 3) + 3,
-                type: 'flying',
-                baseHp: 40,
-                baseAttack: 30,
-                baseDefense: 15,
-                baseSpeed: 40
-            }
+        const wilds = [
+            { name: '꼬렛', level: 2, type: 'normal', hp: 12, atk: 6, def: 5, spd: 8 },
+            { name: '구구', level: 3, type: 'flying', hp: 15, atk: 7, def: 6, spd: 9 },
+            { name: '캐터피', level: 2, type: 'bug', hp: 18, atk: 4, def: 4, spd: 6 },
+            { name: '뿔충이', level: 3, type: 'bug', hp: 16, atk: 5, def: 5, spd: 7 }
         ];
 
-        const chosen = wildPokemons[Math.floor(Math.random() * wildPokemons.length)];
-        const level = chosen.level;
-
+        const chosen = wilds[Math.floor(Math.random() * wilds.length)];
         return {
             name: chosen.name,
-            level: level,
-            hp: chosen.baseHp + level * 2,
-            maxHp: chosen.baseHp + level * 2,
-            attack: chosen.baseAttack + level,
-            defense: chosen.baseDefense + level,
-            speed: chosen.baseSpeed + level,
-            type: chosen.type,
-            moves: [
-                { name: '몸통박치기', power: 35, type: 'normal' },
-                { name: '할퀴기', power: 30, type: 'normal' }
-            ]
+            level: chosen.level + Math.floor(Math.random() * 2),
+            hp: chosen.hp + chosen.level,
+            maxHp: chosen.hp + chosen.level,
+            attack: chosen.atk + chosen.level,
+            defense: chosen.def,
+            speed: chosen.spd,
+            type: chosen.type
         };
+    }
+
+    updateCamera() {
+        // 카메라를 플레이어 중심으로
+        this.camera.x = Math.floor(this.player.x * this.tileSize - this.width / 2);
+        this.camera.y = Math.floor(this.player.y * this.tileSize - this.height / 2);
+
+        // 카메라 경계 제한
+        const maxX = this.map[0].length * this.tileSize - this.width;
+        const maxY = this.map.length * this.tileSize - this.height;
+        this.camera.x = Math.max(0, Math.min(this.camera.x, maxX));
+        this.camera.y = Math.max(0, Math.min(this.camera.y, maxY));
     }
 
     drawTile(x, y, tile) {
@@ -257,432 +230,574 @@ class PokemonGame {
         const py = y * this.tileSize;
 
         switch(tile) {
-            case 0: // 풀
-                this.ctx.fillStyle = '#90EE90';
+            case 0: // 일반 풀
+                this.ctx.fillStyle = GB_COLORS.LIGHT;
                 this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
-                this.ctx.fillStyle = '#7CCD7C';
-                for (let i = 0; i < 5; i++) {
-                    this.ctx.fillRect(px + Math.random() * this.tileSize,
-                                     py + Math.random() * this.tileSize, 2, 3);
+                // 작은 점들
+                this.ctx.fillStyle = GB_COLORS.DARK;
+                if ((x + y) % 2 === 0) {
+                    this.ctx.fillRect(px + 2, py + 2, 1, 1);
+                    this.ctx.fillRect(px + 5, py + 4, 1, 1);
                 }
                 break;
             case 1: // 길
-                this.ctx.fillStyle = '#D2B48C';
+                this.ctx.fillStyle = GB_COLORS.LIGHTEST;
                 this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
-                this.ctx.fillStyle = '#C19A6B';
-                if (Math.random() < 0.1) {
-                    this.ctx.fillRect(px + Math.random() * this.tileSize,
-                                     py + Math.random() * this.tileSize, 3, 3);
+                this.ctx.fillStyle = GB_COLORS.LIGHT;
+                if ((x + y) % 3 === 0) {
+                    this.ctx.fillRect(px + 3, py + 3, 2, 1);
                 }
                 break;
             case 2: // 나무
-                this.ctx.fillStyle = '#228B22';
+                this.ctx.fillStyle = GB_COLORS.DARK;
                 this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
-                this.ctx.fillStyle = '#1a6b1a';
-                this.ctx.fillRect(px + 4, py + 4, this.tileSize - 8, this.tileSize - 8);
-                this.ctx.fillStyle = '#8B4513';
-                this.ctx.fillRect(px + 12, py + 20, 8, 12);
+                this.ctx.fillStyle = GB_COLORS.DARKEST;
+                this.ctx.fillRect(px + 2, py + 1, 4, 5);
+                this.ctx.fillStyle = GB_COLORS.DARK;
+                this.ctx.fillRect(px + 3, py + 5, 2, 2);
                 break;
-            case 3: // 물
-                this.ctx.fillStyle = '#4682B4';
+            case 3: // 긴 풀 (야생 포켓몬)
+                this.ctx.fillStyle = GB_COLORS.DARK;
                 this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
-                this.ctx.fillStyle = '#5A9BD4';
-                this.ctx.fillRect(px + 5, py + 5, 8, 4);
-                this.ctx.fillRect(px + 18, py + 15, 6, 3);
+                this.ctx.fillStyle = GB_COLORS.LIGHT;
+                this.ctx.fillRect(px + 1, py + 2, 1, 3);
+                this.ctx.fillRect(px + 3, py + 1, 1, 4);
+                this.ctx.fillRect(px + 5, py + 2, 1, 3);
                 break;
             case 4: // 집
-                this.ctx.fillStyle = '#8B4513';
+                this.ctx.fillStyle = GB_COLORS.DARKEST;
                 this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
-                this.ctx.fillStyle = '#A0522D';
-                this.ctx.fillRect(px + 2, py + 2, this.tileSize - 4, this.tileSize - 4);
-                this.ctx.fillStyle = '#654321';
-                this.ctx.fillRect(px + 10, py + 15, 12, 15);
-                break;
-            case 5: // 긴 풀 (야생 포켓몬)
-                this.ctx.fillStyle = '#228B22';
-                this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
-                this.ctx.fillStyle = '#32CD32';
-                for (let i = 0; i < 8; i++) {
-                    this.ctx.fillRect(px + Math.random() * this.tileSize,
-                                     py + Math.random() * this.tileSize, 2, 6);
-                }
+                this.ctx.fillStyle = GB_COLORS.DARK;
+                this.ctx.fillRect(px + 1, py + 1, 6, 6);
+                this.ctx.fillStyle = GB_COLORS.LIGHT;
+                this.ctx.fillRect(px + 3, py + 4, 2, 3);
                 break;
         }
     }
 
-    drawPlayer() {
-        const px = this.player.x * this.tileSize;
-        const py = this.player.y * this.tileSize;
+    drawPlayer(x, y) {
+        // 플레이어 (트레이너 스프라이트)
+        const px = x * this.tileSize;
+        const py = y * this.tileSize;
 
-        // 플레이어 몸통 (Red의 스프라이트 간단 버전)
-        this.ctx.fillStyle = '#FF0000';
-        this.ctx.fillRect(px + 8, py + 12, 16, 14);
-
-        // 플레이어 머리
-        this.ctx.fillStyle = '#FFE4C4';
-        this.ctx.fillRect(px + 10, py + 6, 12, 10);
+        // 머리
+        this.ctx.fillStyle = GB_COLORS.DARKEST;
+        this.ctx.fillRect(px + 2, py + 1, 4, 2);
 
         // 모자
-        this.ctx.fillStyle = '#C00000';
-        this.ctx.fillRect(px + 8, py + 4, 16, 6);
+        this.ctx.fillStyle = GB_COLORS.DARKEST;
+        this.ctx.fillRect(px + 1, py, 6, 2);
+        this.ctx.fillRect(px + 2, py + 2, 1, 1);
+        this.ctx.fillRect(px + 5, py + 2, 1, 1);
+
+        // 몸통
+        this.ctx.fillStyle = GB_COLORS.DARKEST;
+        this.ctx.fillRect(px + 2, py + 3, 4, 3);
 
         // 다리
-        this.ctx.fillStyle = '#0000FF';
-        this.ctx.fillRect(px + 9, py + 26, 6, 6);
-        this.ctx.fillRect(px + 17, py + 26, 6, 6);
-
-        // 눈
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(px + 12, py + 10, 2, 2);
-        this.ctx.fillRect(px + 18, py + 10, 2, 2);
+        const offset = this.player.animFrame === 0 ? 0 : 1;
+        this.ctx.fillRect(px + 2, py + 6, 1, 2);
+        this.ctx.fillRect(px + 5, py + 6, 1, 2);
     }
 
-    drawPikachu() {
-        const px = this.pikachu.x * this.tileSize;
-        const py = this.pikachu.y * this.tileSize;
+    drawPikachu(x, y) {
+        const px = x * this.tileSize;
+        const py = y * this.tileSize;
 
-        // 피카츄 몸통
-        this.ctx.fillStyle = '#FFD700';
-        this.ctx.fillRect(px + 10, py + 14, 12, 10);
+        // 피카츄 몸통 (간단한 버전)
+        this.ctx.fillStyle = GB_COLORS.LIGHT;
+        this.ctx.fillRect(px + 2, py + 3, 4, 3);
 
-        // 피카츄 머리
-        this.ctx.fillStyle = '#FFD700';
-        this.ctx.fillRect(px + 11, py + 10, 10, 8);
+        // 머리
+        this.ctx.fillRect(px + 2, py + 2, 4, 2);
 
-        // 귀 (번개 모양)
-        this.ctx.fillStyle = '#FFD700';
-        this.ctx.fillRect(px + 9, py + 6, 3, 6);
-        this.ctx.fillRect(px + 20, py + 6, 3, 6);
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(px + 9, py + 6, 3, 2);
-        this.ctx.fillRect(px + 20, py + 6, 3, 2);
+        // 귀
+        this.ctx.fillRect(px + 1, py, 1, 2);
+        this.ctx.fillRect(px + 6, py, 1, 2);
+        this.ctx.fillStyle = GB_COLORS.DARKEST;
+        this.ctx.fillRect(px + 1, py, 1, 1);
+        this.ctx.fillRect(px + 6, py, 1, 1);
 
         // 눈
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(px + 13, py + 13, 2, 2);
-        this.ctx.fillRect(px + 17, py + 13, 2, 2);
+        this.ctx.fillStyle = GB_COLORS.DARKEST;
+        this.ctx.fillRect(px + 2, py + 3, 1, 1);
+        this.ctx.fillRect(px + 5, py + 3, 1, 1);
 
-        // 볼터치 (빨간 볼)
-        this.ctx.fillStyle = '#FF6B6B';
-        this.ctx.fillRect(px + 10, py + 16, 3, 3);
-        this.ctx.fillRect(px + 19, py + 16, 3, 3);
+        // 볼
+        this.ctx.fillStyle = GB_COLORS.DARK;
+        this.ctx.fillRect(px + 1, py + 4, 1, 1);
+        this.ctx.fillRect(px + 6, py + 4, 1, 1);
 
-        // 꼬리 (번개 모양)
-        this.ctx.fillStyle = '#FFD700';
-        this.ctx.fillRect(px + 22, py + 12, 4, 8);
-        this.ctx.fillRect(px + 24, py + 8, 3, 6);
+        // 꼬리
+        this.ctx.fillStyle = GB_COLORS.LIGHT;
+        this.ctx.fillRect(px + 6, py + 2, 2, 3);
+    }
+
+    drawOverworld() {
+        this.updateCamera();
+
+        // 배경
+        this.ctx.fillStyle = GB_COLORS.LIGHTEST;
+        this.ctx.fillRect(0, 0, this.width, this.height);
+
+        this.ctx.save();
+        this.ctx.translate(-this.camera.x, -this.camera.y);
+
+        // 맵 그리기
+        for (let y = 0; y < this.map.length; y++) {
+            for (let x = 0; x < this.map[y].length; x++) {
+                this.drawTile(x, y, this.map[y][x]);
+            }
+        }
+
+        // 피카츄 먼저 그리기
+        this.drawPikachu(this.pikachu.x, this.pikachu.y);
+
+        // 플레이어 그리기
+        this.drawPlayer(this.player.x, this.player.y);
+
+        this.ctx.restore();
+
+        // UI
+        this.drawUI();
     }
 
     drawUI() {
-        // 상단 UI
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.fillRect(0, 0, this.canvas.width, 40);
+        // 상단 정보창
+        this.ctx.fillStyle = GB_COLORS.LIGHTEST;
+        this.ctx.fillRect(0, 0, this.width, 10);
 
-        this.ctx.fillStyle = '#FFF';
-        this.ctx.font = '18px "Courier New"';
-        this.ctx.fillText(`피카츄 Lv.${this.party[0].level}`, 10, 25);
+        this.ctx.fillStyle = GB_COLORS.DARKEST;
+        this.ctx.fillRect(0, 10, this.width, 1);
 
-        // HP 바
-        const hpPercent = this.party[0].hp / this.party[0].maxHp;
-        this.ctx.fillStyle = '#333';
-        this.ctx.fillRect(150, 10, 104, 24);
-        this.ctx.fillStyle = hpPercent > 0.5 ? '#0F0' : hpPercent > 0.2 ? '#FF0' : '#F00';
-        this.ctx.fillRect(152, 12, 100 * hpPercent, 20);
+        // 텍스트
+        this.drawText(`${this.party[0].name} Lv${this.party[0].level}`, 2, 2, GB_COLORS.DARKEST);
+        this.drawText(`HP:${this.party[0].hp}/${this.party[0].maxHp}`, 100, 2, GB_COLORS.DARKEST);
+    }
 
-        this.ctx.fillStyle = '#FFF';
-        this.ctx.fillText(`HP: ${this.party[0].hp}/${this.party[0].maxHp}`, 270, 25);
+    drawText(text, x, y, color = GB_COLORS.DARKEST) {
+        this.ctx.fillStyle = color;
+        this.ctx.font = '8px monospace';
+        this.ctx.fillText(text, x, y + 6);
+    }
 
-        // 걸음 수
-        this.ctx.fillText(`걸음: ${this.stepCounter}`, 500, 25);
+    drawTextBox(text, x, y, w, h) {
+        // 텍스트 박스 배경
+        this.ctx.fillStyle = GB_COLORS.LIGHTEST;
+        this.ctx.fillRect(x, y, w, h);
 
-        // 조작 안내
-        this.ctx.font = '14px "Courier New"';
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        this.ctx.fillRect(0, this.canvas.height - 30, this.canvas.width, 30);
-        this.ctx.fillStyle = '#FFF';
-        this.ctx.fillText('이동: 화살표 키 또는 WASD | 긴 풀에서 야생 포켓몬 만나기!', 10, this.canvas.height - 10);
+        // 테두리
+        this.ctx.strokeStyle = GB_COLORS.DARKEST;
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(x, y, w, h);
+
+        // 내부 테두리
+        this.ctx.strokeStyle = GB_COLORS.DARK;
+        this.ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
     }
 
     render() {
-        // 배경 클리어
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
         if (this.gameState === 'overworld') {
-            // 맵 그리기
-            for (let y = 0; y < this.map.length; y++) {
-                for (let x = 0; x < this.map[y].length; x++) {
-                    this.drawTile(x, y, this.map[y][x]);
-                }
-            }
-
-            // 피카츄 먼저 그리기 (플레이어 뒤에)
-            this.drawPikachu();
-
-            // 플레이어 그리기
-            this.drawPlayer();
-
-            // UI 그리기
-            this.drawUI();
+            this.drawOverworld();
+        } else if (this.gameState === 'battle' && this.battle) {
+            this.battle.render();
         }
     }
 
-    gameLoop() {
+    gameLoop(timestamp) {
+        const deltaTime = timestamp - this.lastTime;
+        this.lastTime = timestamp;
+
         this.render();
-        requestAnimationFrame(() => this.gameLoop());
+
+        requestAnimationFrame((t) => this.gameLoop(t));
     }
 }
 
-// 배틀 시스템
-class BattleSystem {
-    constructor(game) {
+// 전투 시스템
+class Battle {
+    constructor(game, wildPokemon) {
         this.game = game;
-        this.enemy = null;
-        this.playerPokemon = null;
-        this.turn = 'player';
-        this.battleUI = document.getElementById('battle-ui');
-        this.messageBox = document.getElementById('battle-message');
-    }
-
-    start(wildPokemon) {
-        this.game.gameState = 'battle';
         this.enemy = wildPokemon;
-        this.playerPokemon = {...this.game.party[0]};
-        this.turn = 'player';
+        this.player = {...game.party[0]};
 
-        this.battleUI.style.display = 'block';
-        this.updateUI();
-        this.showMessage(`야생의 ${this.enemy.name}이(가) 나타났다!`);
+        this.state = 'intro'; // 'intro', 'menu', 'fight_menu', 'attack', 'enemy_turn', 'end'
+        this.message = `야생의 ${this.enemy.name}이(가)\n나타났다!`;
+        this.messageIndex = 0;
+        this.messageTimer = 0;
+        this.waitingForInput = false;
 
-        // 배틀 배경 그리기
-        this.drawBattleScreen();
+        this.menuCursor = 0;
+        this.fightCursor = 0;
+
+        this.moves = [
+            { name: '전기충격', power: 40, type: 'electric' },
+            { name: '몸통박치기', power: 35, type: 'normal' },
+            { name: '꼬리흔들기', power: 0, type: 'status' },
+            { name: '울음소리', power: 0, type: 'status' }
+        ];
+
+        this.enemyHpDisplay = this.enemy.hp;
+        this.playerHpDisplay = this.player.hp;
     }
 
-    drawBattleScreen() {
-        const ctx = this.game.ctx;
+    handleInput(key) {
+        if (!this.waitingForInput) return;
 
-        // 배경
-        const gradient = ctx.createLinearGradient(0, 0, 0, this.game.canvas.height);
-        gradient.addColorStop(0, '#87CEEB');
-        gradient.addColorStop(1, '#90EE90');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, this.game.canvas.width, this.game.canvas.height);
-
-        // 적 포켓몬 플랫폼
-        ctx.fillStyle = '#8B4513';
-        ctx.fillRect(500, 150, 150, 10);
-
-        // 플레이어 포켓몬 플랫폼
-        ctx.fillStyle = '#654321';
-        ctx.fillRect(150, 350, 150, 10);
-
-        // 적 포켓몬 그리기 (간단한 실루엣)
-        this.drawEnemyPokemon(550, 80);
-
-        // 피카츄 그리기
-        this.drawPlayerPikachu(200, 280);
-    }
-
-    drawEnemyPokemon(x, y) {
-        const ctx = this.game.ctx;
-
-        // 포켓몬 타입에 따른 색상
-        let color = '#8B8B8B';
-        if (this.enemy.type === 'normal') color = '#A8A878';
-        if (this.enemy.type === 'bug') color = '#A8B820';
-        if (this.enemy.type === 'flying') color = '#A890F0';
-
-        // 간단한 몸통
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y + 20, 40, 40);
-
-        // 머리
-        ctx.fillRect(x + 5, y, 30, 30);
-
-        // 눈
-        ctx.fillStyle = '#FFF';
-        ctx.fillRect(x + 10, y + 10, 8, 8);
-        ctx.fillRect(x + 25, y + 10, 8, 8);
-        ctx.fillStyle = '#000';
-        ctx.fillRect(x + 12, y + 12, 4, 4);
-        ctx.fillRect(x + 27, y + 12, 4, 4);
-
-        // 이름과 레벨
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 16px "Courier New"';
-        ctx.fillText(`${this.enemy.name} Lv.${this.enemy.level}`, x - 20, y - 10);
-    }
-
-    drawPlayerPikachu(x, y) {
-        const ctx = this.game.ctx;
-
-        // 피카츄 몸통 (더 큰 버전)
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(x + 10, y + 30, 40, 35);
-
-        // 머리
-        ctx.fillRect(x + 12, y + 10, 36, 30);
-
-        // 귀
-        ctx.fillRect(x + 8, y, 12, 20);
-        ctx.fillRect(x + 40, y, 12, 20);
-        ctx.fillStyle = '#000';
-        ctx.fillRect(x + 8, y, 12, 6);
-        ctx.fillRect(x + 40, y, 12, 6);
-
-        // 눈
-        ctx.fillRect(x + 20, y + 20, 6, 6);
-        ctx.fillRect(x + 34, y + 20, 6, 6);
-
-        // 볼터치
-        ctx.fillStyle = '#FF6B6B';
-        ctx.fillRect(x + 10, y + 30, 8, 8);
-        ctx.fillRect(x + 42, y + 30, 8, 8);
-
-        // 꼬리
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(x + 50, y + 25, 15, 25);
-        ctx.fillRect(x + 55, y + 15, 10, 20);
-    }
-
-    updateUI() {
-        document.getElementById('enemy-pokemon').textContent =
-            `${this.enemy.name} Lv.${this.enemy.level}`;
-        document.getElementById('player-pokemon').textContent =
-            `피카츄 Lv.${this.playerPokemon.level}`;
-
-        this.updateHPBar('enemy', this.enemy.hp, this.enemy.maxHp);
-        this.updateHPBar('player', this.playerPokemon.hp, this.playerPokemon.maxHp);
-
-        document.getElementById('enemy-hp-text').textContent =
-            `HP: ${this.enemy.hp}/${this.enemy.maxHp}`;
-        document.getElementById('player-hp-text').textContent =
-            `HP: ${this.playerPokemon.hp}/${this.playerPokemon.maxHp}`;
-
-        this.drawBattleScreen();
-    }
-
-    updateHPBar(who, hp, maxHp) {
-        const percent = Math.max(0, hp / maxHp);
-        const hpBar = document.getElementById(`${who}-hp`);
-        hpBar.style.width = (percent * 100) + '%';
-
-        if (percent > 0.5) {
-            hpBar.className = 'hp-fill';
-        } else if (percent > 0.2) {
-            hpBar.className = 'hp-fill low';
-        } else {
-            hpBar.className = 'hp-fill critical';
+        if (this.state === 'menu') {
+            if (key === 'ArrowUp' || key === 'w') {
+                this.menuCursor = this.menuCursor === 0 || this.menuCursor === 1 ? this.menuCursor : this.menuCursor - 2;
+            } else if (key === 'ArrowDown' || key === 's') {
+                this.menuCursor = this.menuCursor === 2 || this.menuCursor === 3 ? this.menuCursor : this.menuCursor + 2;
+            } else if (key === 'ArrowLeft' || key === 'a') {
+                if (this.menuCursor % 2 === 1) this.menuCursor--;
+            } else if (key === 'ArrowRight' || key === 'd') {
+                if (this.menuCursor % 2 === 0) this.menuCursor++;
+            } else if (key === 'Enter' || key === ' ' || key === 'z') {
+                this.selectMenu();
+            }
+        } else if (this.state === 'fight_menu') {
+            if (key === 'ArrowUp' || key === 'w') {
+                this.fightCursor = this.fightCursor === 0 || this.fightCursor === 1 ? this.fightCursor : this.fightCursor - 2;
+            } else if (key === 'ArrowDown' || key === 's') {
+                this.fightCursor = this.fightCursor === 2 || this.fightCursor === 3 ? this.fightCursor : this.fightCursor + 2;
+            } else if (key === 'ArrowLeft' || key === 'a') {
+                if (this.fightCursor % 2 === 1) this.fightCursor--;
+            } else if (key === 'ArrowRight' || key === 'd') {
+                if (this.fightCursor % 2 === 0) this.fightCursor++;
+            } else if (key === 'Enter' || key === ' ' || key === 'z') {
+                this.selectMove();
+            } else if (key === 'Escape' || key === 'x') {
+                this.state = 'menu';
+            }
+        } else if (key === 'Enter' || key === ' ' || key === 'z') {
+            this.advanceMessage();
         }
     }
 
-    showMessage(msg) {
-        this.messageBox.textContent = msg;
+    selectMenu() {
+        this.waitingForInput = false;
+        switch(this.menuCursor) {
+            case 0: // FIGHT
+                this.state = 'fight_menu';
+                this.waitingForInput = true;
+                break;
+            case 1: // PKMN
+                this.message = '다른 포켓몬이 없습니다!';
+                this.messageIndex = 0;
+                this.waitingForInput = false;
+                setTimeout(() => {
+                    this.state = 'menu';
+                    this.waitingForInput = true;
+                }, 1000);
+                break;
+            case 2: // ITEM
+                this.message = '도구가 없습니다!';
+                this.messageIndex = 0;
+                this.waitingForInput = false;
+                setTimeout(() => {
+                    this.state = 'menu';
+                    this.waitingForInput = true;
+                }, 1000);
+                break;
+            case 3: // RUN
+                this.tryRun();
+                break;
+        }
     }
 
-    attack() {
-        if (this.turn !== 'player') return;
+    selectMove() {
+        const move = this.moves[this.fightCursor];
+        this.waitingForInput = false;
+        this.state = 'attack';
+        this.playerAttack(move);
+    }
 
-        const move = this.playerPokemon.moves[0]; // 첫 번째 기술 사용
-        const damage = this.calculateDamage(this.playerPokemon, this.enemy, move);
+    playerAttack(move) {
+        this.message = `피카츄의\n${move.name}!`;
+        this.messageIndex = 0;
 
-        this.enemy.hp = Math.max(0, this.enemy.hp - damage);
-        this.updateUI();
-        this.showMessage(`피카츄의 ${move.name}! ${damage}의 데미지!`);
+        setTimeout(() => {
+            if (move.power > 0) {
+                const damage = this.calculateDamage(this.player, this.enemy, move);
+                this.enemy.hp = Math.max(0, this.enemy.hp - damage);
 
-        if (this.enemy.hp <= 0) {
-            setTimeout(() => this.win(), 1500);
-            return;
-        }
+                this.animateHPBar('enemy', damage);
 
-        this.turn = 'enemy';
-        setTimeout(() => this.enemyTurn(), 1500);
+                if (this.enemy.hp <= 0) {
+                    setTimeout(() => this.win(), 1000);
+                } else {
+                    setTimeout(() => this.enemyTurn(), 1000);
+                }
+            } else {
+                setTimeout(() => this.enemyTurn(), 800);
+            }
+        }, 1000);
     }
 
     enemyTurn() {
-        const move = this.enemy.moves[0];
-        const damage = this.calculateDamage(this.enemy, this.playerPokemon, move);
+        this.state = 'enemy_turn';
+        this.message = `${this.enemy.name}의\n몸통박치기!`;
+        this.messageIndex = 0;
 
-        this.playerPokemon.hp = Math.max(0, this.playerPokemon.hp - damage);
-        this.updateUI();
-        this.showMessage(`${this.enemy.name}의 ${move.name}! ${damage}의 데미지!`);
+        setTimeout(() => {
+            const damage = Math.floor(Math.random() * 8) + 4;
+            this.player.hp = Math.max(0, this.player.hp - damage);
 
-        if (this.playerPokemon.hp <= 0) {
-            setTimeout(() => this.lose(), 1500);
-            return;
-        }
+            this.animateHPBar('player', damage);
 
-        this.turn = 'player';
+            if (this.player.hp <= 0) {
+                setTimeout(() => this.lose(), 1000);
+            } else {
+                setTimeout(() => {
+                    this.state = 'menu';
+                    this.message = '무엇을 할까?';
+                    this.messageIndex = 0;
+                    this.waitingForInput = true;
+                }, 1000);
+            }
+        }, 1000);
+    }
+
+    animateHPBar(who, damage) {
+        const target = who === 'enemy' ? this.enemy.hp : this.player.hp;
+        const interval = setInterval(() => {
+            if (who === 'enemy') {
+                if (this.enemyHpDisplay > target) {
+                    this.enemyHpDisplay--;
+                } else {
+                    clearInterval(interval);
+                }
+            } else {
+                if (this.playerHpDisplay > target) {
+                    this.playerHpDisplay--;
+                } else {
+                    clearInterval(interval);
+                }
+            }
+        }, 30);
     }
 
     calculateDamage(attacker, defender, move) {
-        if (move.power === 0) return 0;
-
         const level = attacker.level;
         const attack = attacker.attack;
         const defense = defender.defense;
         const power = move.power;
 
-        // 간단한 데미지 계산식
         let damage = ((2 * level / 5 + 2) * power * attack / defense) / 50 + 2;
-
-        // 타입 상성 (간단 버전)
-        if (move.type === 'electric' && defender.type === 'flying') damage *= 2;
-        if (move.type === 'electric' && defender.type === 'bug') damage *= 0.5;
-
-        // 랜덤 요소
         damage = Math.floor(damage * (Math.random() * 0.15 + 0.85));
 
-        return Math.max(1, damage);
+        return Math.max(1, Math.floor(damage));
     }
 
-    useItem() {
-        this.showMessage('도구가 없습니다!');
-    }
-
-    switchPokemon() {
-        this.showMessage('교체할 포켓몬이 없습니다!');
-    }
-
-    run() {
+    tryRun() {
         if (Math.random() < 0.5) {
-            this.showMessage('무사히 도망쳤다!');
-            setTimeout(() => this.end(), 1000);
+            this.message = '무사히 도망쳤다!';
+            this.messageIndex = 0;
+            setTimeout(() => this.end(), 1500);
         } else {
-            this.showMessage('도망칠 수 없다!');
-            this.turn = 'enemy';
+            this.message = '도망칠 수 없다!';
+            this.messageIndex = 0;
             setTimeout(() => this.enemyTurn(), 1500);
         }
     }
 
     win() {
-        const expGain = this.enemy.level * 15;
-        this.showMessage(`${this.enemy.name}을(를) 쓰러뜨렸다! 경험치 ${expGain}을 획득!`);
-
-        // 경험치로 HP 약간 회복
-        this.game.party[0].hp = Math.min(
-            this.game.party[0].maxHp,
-            this.game.party[0].hp + 5
-        );
-
+        this.message = `야생의 ${this.enemy.name}을(를)\n쓰러뜨렸다!`;
+        this.messageIndex = 0;
+        this.game.party[0].hp = this.player.hp;
         setTimeout(() => this.end(), 2000);
     }
 
     lose() {
-        this.showMessage('피카츄가 쓰러졌다! 포켓몬 센터로 이동합니다...');
+        this.message = '눈앞이 캄캄해졌다!';
+        this.messageIndex = 0;
         this.game.party[0].hp = this.game.party[0].maxHp;
         setTimeout(() => this.end(), 2000);
     }
 
     end() {
-        this.battleUI.style.display = 'none';
         this.game.gameState = 'overworld';
-        this.enemy = null;
+        this.game.battle = null;
+    }
+
+    advanceMessage() {
+        if (this.state === 'intro') {
+            this.state = 'menu';
+            this.message = '무엇을 할까?';
+            this.messageIndex = 0;
+            this.waitingForInput = true;
+        }
+    }
+
+    render() {
+        const ctx = this.game.ctx;
+        const w = this.game.width;
+        const h = this.game.height;
+
+        // 배경
+        ctx.fillStyle = GB_COLORS.LIGHTEST;
+        ctx.fillRect(0, 0, w, h);
+
+        // 적 포켓몬 플랫폼
+        ctx.fillStyle = GB_COLORS.DARK;
+        ctx.fillRect(100, 45, 40, 3);
+
+        // 플레이어 포켓몬 플랫폼
+        ctx.fillStyle = GB_COLORS.DARKEST;
+        ctx.fillRect(20, 85, 40, 3);
+
+        // 적 포켓몬 스프라이트
+        this.drawEnemyPokemon(110, 25);
+
+        // 플레이어 피카츄 (뒷모습)
+        this.drawPlayerPikachu(30, 65);
+
+        // 적 포켓몬 정보창
+        this.game.drawTextBox(75, 8, 80, 18);
+        this.game.drawText(this.enemy.name, 80, 11);
+        this.game.drawText(`Lv${this.enemy.level}`, 135, 11);
+        this.drawHP(80, 18, 70, this.enemyHpDisplay, this.enemy.maxHp);
+
+        // 플레이어 포켓몬 정보창
+        this.game.drawTextBox(5, 55, 80, 26);
+        this.game.drawText(this.player.name, 10, 58);
+        this.game.drawText(`Lv${this.player.level}`, 65, 58);
+        this.drawHP(10, 65, 70, this.playerHpDisplay, this.player.maxHp);
+        this.game.drawText(`${Math.floor(this.playerHpDisplay)}/${this.player.maxHp}`, 50, 72);
+
+        // 메시지 박스
+        this.game.drawTextBox(5, h - 35, w - 10, 30);
+
+        // 메시지 표시
+        const lines = this.message.split('\n');
+        lines.forEach((line, i) => {
+            this.game.drawText(line, 10, h - 28 + i * 10);
+        });
+
+        // 메뉴 또는 기술 선택
+        if (this.state === 'menu') {
+            this.drawBattleMenu();
+        } else if (this.state === 'fight_menu') {
+            this.drawFightMenu();
+        }
+
+        // 커서 깜빡임
+        if (this.waitingForInput && Math.floor(Date.now() / 500) % 2 === 0) {
+            ctx.fillStyle = GB_COLORS.DARKEST;
+            ctx.fillRect(w - 12, h - 12, 5, 2);
+        }
+    }
+
+    drawBattleMenu() {
+        const ctx = this.game.ctx;
+        const w = this.game.width;
+        const h = this.game.height;
+
+        this.game.drawTextBox(w - 75, h - 35, 70, 30);
+
+        const menu = ['FIGHT', 'PKMN', 'ITEM', 'RUN'];
+        menu.forEach((item, i) => {
+            const x = w - 70 + (i % 2) * 35;
+            const y = h - 28 + Math.floor(i / 2) * 12;
+            this.game.drawText(item, x, y);
+
+            if (i === this.menuCursor) {
+                ctx.fillStyle = GB_COLORS.DARKEST;
+                ctx.fillRect(x - 5, y + 2, 3, 2);
+            }
+        });
+    }
+
+    drawFightMenu() {
+        const ctx = this.game.ctx;
+        const w = this.game.width;
+        const h = this.game.height;
+
+        this.game.drawTextBox(w - 75, h - 35, 70, 30);
+
+        this.moves.forEach((move, i) => {
+            const x = w - 70 + (i % 2) * 35;
+            const y = h - 28 + Math.floor(i / 2) * 12;
+            this.game.drawText(move.name.substring(0, 7), x, y);
+
+            if (i === this.fightCursor) {
+                ctx.fillStyle = GB_COLORS.DARKEST;
+                ctx.fillRect(x - 5, y + 2, 3, 2);
+            }
+        });
+    }
+
+    drawHP(x, y, w, hp, maxHp) {
+        const ctx = this.game.ctx;
+
+        // HP 바 배경
+        ctx.fillStyle = GB_COLORS.DARKEST;
+        ctx.fillRect(x, y, w, 3);
+
+        // HP 바
+        const hpWidth = Math.floor((hp / maxHp) * w);
+        const hpColor = hp > maxHp * 0.5 ? GB_COLORS.LIGHT :
+                       hp > maxHp * 0.2 ? GB_COLORS.LIGHT : GB_COLORS.DARK;
+        ctx.fillStyle = hpColor;
+        ctx.fillRect(x, y, hpWidth, 3);
+    }
+
+    drawEnemyPokemon(x, y) {
+        const ctx = this.game.ctx;
+
+        // 간단한 포켓몬 실루엣
+        ctx.fillStyle = GB_COLORS.DARKEST;
+
+        // 몸통
+        ctx.fillRect(x, y + 10, 16, 12);
+
+        // 머리
+        ctx.fillRect(x + 2, y + 2, 12, 10);
+
+        // 귀/뿔
+        ctx.fillRect(x + 1, y, 4, 4);
+        ctx.fillRect(x + 11, y, 4, 4);
+
+        // 눈 (흰색)
+        ctx.fillStyle = GB_COLORS.LIGHTEST;
+        ctx.fillRect(x + 4, y + 5, 3, 3);
+        ctx.fillRect(x + 10, y + 5, 3, 3);
+
+        // 눈동자
+        ctx.fillStyle = GB_COLORS.DARKEST;
+        ctx.fillRect(x + 5, y + 6, 1, 1);
+        ctx.fillRect(x + 11, y + 6, 1, 1);
+    }
+
+    drawPlayerPikachu(x, y) {
+        const ctx = this.game.ctx;
+
+        // 피카츄 뒷모습 (더 큰 버전)
+        ctx.fillStyle = GB_COLORS.DARK;
+
+        // 몸통
+        ctx.fillRect(x + 4, y + 10, 16, 14);
+
+        // 머리
+        ctx.fillRect(x + 6, y + 4, 12, 10);
+
+        // 귀
+        ctx.fillRect(x + 4, y, 4, 8);
+        ctx.fillRect(x + 16, y, 4, 8);
+        ctx.fillStyle = GB_COLORS.DARKEST;
+        ctx.fillRect(x + 4, y, 4, 3);
+        ctx.fillRect(x + 16, y, 4, 3);
+
+        // 꼬리
+        ctx.fillStyle = GB_COLORS.DARK;
+        ctx.fillRect(x + 20, y + 6, 6, 10);
+        ctx.fillRect(x + 24, y + 2, 4, 8);
     }
 }
 
 // 게임 시작
 let game;
 window.onload = () => {
-    game = new PokemonGame();
+    game = new PokemonYellow();
 };
