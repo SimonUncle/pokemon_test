@@ -717,8 +717,9 @@ class PokemonYellow {
 class Battle {
     constructor(game, enemyPokemon, battleType = 'wild', trainer = null) {
         this.game = game;
-        this.enemy = {...enemyPokemon};
-        this.player = {...game.party[0]};
+        // 깊은 복사로 수정
+        this.enemy = JSON.parse(JSON.stringify(enemyPokemon));
+        this.player = JSON.parse(JSON.stringify(game.party[0]));
         this.battleType = battleType;
         this.trainer = trainer;
         this.trainerPokemonIndex = 0;
@@ -737,12 +738,12 @@ class Battle {
 
         this.resultShown = false;
 
-        // 1.5초 후 자동으로 메뉴로 전환
+        // 800ms 후 자동으로 메뉴로 전환 (더 빠르게)
         setTimeout(() => {
             this.state = 'menu';
             this.message = '무엇을 할까?';
             this.waitingForInput = true;
-        }, 1500);
+        }, 800);
     }
 
     handleInput(key) {
@@ -791,7 +792,7 @@ class Battle {
                     this.state = 'menu';
                     this.message = '무엇을 할까?';
                     this.waitingForInput = true;
-                }, 1200);
+                }, 800);
                 break;
             case 2: // ITEM
                 this.message = '도구가 없습니다!';
@@ -799,7 +800,7 @@ class Battle {
                     this.state = 'menu';
                     this.message = '무엇을 할까?';
                     this.waitingForInput = true;
-                }, 1200);
+                }, 800);
                 break;
             case 3: // RUN
                 this.tryRun();
@@ -811,10 +812,11 @@ class Battle {
         const move = this.player.moves[this.fightCursor];
         if (!move || move.pp <= 0) {
             this.message = 'PP가 부족합니다!';
+            this.waitingForInput = false;
             setTimeout(() => {
                 this.state = 'fight_menu';
                 this.waitingForInput = true;
-            }, 1000);
+            }, 800);
             return;
         }
 
@@ -824,8 +826,12 @@ class Battle {
     }
 
     playerAttack(move) {
-        move.pp--;
+        // PP 감소 (플레이어 원본에서)
+        const playerMove = this.game.party[0].moves.find(m => m.name === move.name);
+        if (playerMove) playerMove.pp--;
+
         this.message = `피카츄의\n${move.name}!`;
+        this.waitingForInput = false;
 
         setTimeout(() => {
             const damage = this.calculateDamage(this.player, this.enemy, move);
@@ -835,15 +841,26 @@ class Battle {
             if (this.enemy.hp <= 0) {
                 setTimeout(() => {
                     this.enemyFainted();
-                }, 1200);
+                }, 800);
             } else {
-                setTimeout(() => this.enemyTurn(), 1200);
+                setTimeout(() => this.enemyTurn(), 800);
             }
-        }, 1000);
+        }, 600);
     }
 
     enemyTurn() {
         this.state = 'enemy_turn';
+        this.waitingForInput = false;
+
+        // 적 포켓몬의 moves가 있는지 확인
+        if (!this.enemy.moves || this.enemy.moves.length === 0) {
+            console.error('Enemy has no moves!');
+            this.state = 'menu';
+            this.message = '무엇을 할까?';
+            this.waitingForInput = true;
+            return;
+        }
+
         const enemyMove = this.enemy.moves[Math.floor(Math.random() * this.enemy.moves.length)];
         this.message = `${this.enemy.name}의\n${enemyMove.name}!`;
 
@@ -853,39 +870,40 @@ class Battle {
             this.animateHPBar('player', damage);
 
             if (this.player.hp <= 0) {
-                setTimeout(() => this.lose(), 1200);
+                setTimeout(() => this.lose(), 800);
             } else {
                 setTimeout(() => {
                     this.state = 'menu';
                     this.message = '무엇을 할까?';
                     this.waitingForInput = true;
-                }, 1200);
+                }, 800);
             }
-        }, 1000);
+        }, 600);
     }
 
     enemyFainted() {
         this.message = `${this.enemy.name}은(는)\n쓰러졌다!`;
+        this.waitingForInput = false;
 
         if (this.battleType === 'trainer' && this.trainer) {
             // 트레이너의 다음 포켓몬 확인
             this.trainerPokemonIndex++;
             if (this.trainerPokemonIndex < this.trainer.pokemon.length) {
                 setTimeout(() => {
-                    this.enemy = {...this.trainer.pokemon[this.trainerPokemonIndex]};
+                    this.enemy = JSON.parse(JSON.stringify(this.trainer.pokemon[this.trainerPokemonIndex]));
                     this.enemyHpDisplay = this.enemy.hp;
                     this.message = `${this.trainer.name}이(가)\n${this.enemy.name}을(를) 꺼냈다!`;
                     setTimeout(() => {
                         this.state = 'menu';
                         this.message = '무엇을 할까?';
                         this.waitingForInput = true;
-                    }, 1500);
-                }, 1500);
+                    }, 1000);
+                }, 1000);
                 return;
             }
         }
 
-        setTimeout(() => this.win(), 1500);
+        setTimeout(() => this.win(), 1000);
     }
 
     animateHPBar(who, damage) {
@@ -930,28 +948,31 @@ class Battle {
     }
 
     tryRun() {
+        this.waitingForInput = false;
+
         if (this.battleType === 'trainer') {
             this.message = '트레이너전에서는\n도망칠 수 없다!';
             setTimeout(() => {
                 this.state = 'menu';
                 this.message = '무엇을 할까?';
                 this.waitingForInput = true;
-            }, 1500);
+            }, 1000);
             return;
         }
 
         if (Math.random() < 0.5) {
             this.message = '무사히 도망쳤다!';
-            setTimeout(() => this.end(), 1500);
+            setTimeout(() => this.end(), 1000);
         } else {
             this.message = '도망칠 수 없다!';
-            setTimeout(() => this.enemyTurn(), 1500);
+            setTimeout(() => this.enemyTurn(), 1000);
         }
     }
 
     win() {
         const exp = this.enemy.level * 20;
         const money = this.enemy.level * 50;
+        this.waitingForInput = false;
 
         if (this.battleType === 'trainer') {
             this.message = `${this.trainer.name}을(를)\n이겼다!\n상금 ₩${money}을 받았다!`;
@@ -963,23 +984,29 @@ class Battle {
                 setTimeout(() => {
                     this.game.badges.push(this.trainer.badge);
                     this.message = `${this.trainer.badge} 배지를\n획득했다!`;
-                    setTimeout(() => this.end(), 2000);
-                }, 2000);
+                    setTimeout(() => this.end(), 1500);
+                }, 1500);
                 return;
             }
         } else {
             this.message = `야생의 ${this.enemy.name}을(를)\n쓰러뜨렸다!`;
         }
 
+        // 플레이어 HP 업데이트
         this.game.party[0].hp = this.player.hp;
-        setTimeout(() => this.end(), 2500);
+        setTimeout(() => this.end(), 1800);
     }
 
     lose() {
         this.message = '눈앞이 캄캄해졌다!';
+        this.waitingForInput = false;
+
+        // 전체 회복
         this.game.party[0].hp = this.game.party[0].maxHp;
+        this.game.party[0].moves.forEach(m => m.pp = m.maxPp);
         this.game.player.money = Math.floor(this.game.player.money / 2);
-        setTimeout(() => this.end(), 2500);
+
+        setTimeout(() => this.end(), 1800);
     }
 
     end() {
