@@ -727,7 +727,7 @@ class Battle {
         this.message = battleType === 'trainer' ?
             `${trainer.name}이(가) 승부를 걸어왔다!\n가라! ${this.enemy.name}!` :
             `야생의 ${this.enemy.name}이(가)\n나타났다!`;
-        this.waitingForInput = true;
+        this.waitingForInput = false;
 
         this.menuCursor = 0;
         this.fightCursor = 0;
@@ -736,18 +736,16 @@ class Battle {
         this.playerHpDisplay = this.player.hp;
 
         this.resultShown = false;
+
+        // 1.5초 후 자동으로 메뉴로 전환
+        setTimeout(() => {
+            this.state = 'menu';
+            this.message = '무엇을 할까?';
+            this.waitingForInput = true;
+        }, 1500);
     }
 
     handleInput(key) {
-        if (this.state === 'intro') {
-            if (key === 'Enter' || key === ' ' || key === 'z') {
-                this.state = 'menu';
-                this.message = '무엇을 할까?';
-                this.waitingForInput = true;
-            }
-            return;
-        }
-
         if (!this.waitingForInput) return;
 
         if (this.state === 'menu') {
