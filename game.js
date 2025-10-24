@@ -151,32 +151,62 @@ class PokemonYellow {
     generateNPCs() {
         return [
             // 트레이너들
-            { x: 14, y: 15, type: 'trainer', name: '꼬마', defeated: false, direction: 'down',
+            { x: 14, y: 15, type: 'trainer', name: '꼬마', defeated: false, battleStarted: false, direction: 'down',
               pokemon: [
-                { name: '뿔충이', level: 9, hp: 28, maxHp: 28, attack: 12, defense: 10, speed: 15, type: 'bug' }
+                { name: '뿔충이', level: 9, hp: 28, maxHp: 28, attack: 12, defense: 10, speed: 15, type: 'bug',
+                  moves: [
+                    { name: '몸통박치기', power: 40, type: 'normal' },
+                    { name: '할퀴기', power: 35, type: 'normal' }
+                  ]
+                }
               ]
             },
-            { x: 15, y: 22, type: 'trainer', name: '단발소녀', defeated: false, direction: 'left',
+            { x: 15, y: 22, type: 'trainer', name: '단발소녀', defeated: false, battleStarted: false, direction: 'left',
               pokemon: [
-                { name: '참새', level: 10, hp: 30, maxHp: 30, attack: 15, defense: 8, speed: 18, type: 'flying' }
+                { name: '참새', level: 10, hp: 30, maxHp: 30, attack: 15, defense: 8, speed: 18, type: 'flying',
+                  moves: [
+                    { name: '쪼기', power: 35, type: 'flying' },
+                    { name: '울음소리', power: 0, type: 'normal' }
+                  ]
+                }
               ]
             },
-            { x: 18, y: 19, type: 'trainer', name: '반바지소년', defeated: false, direction: 'right',
+            { x: 18, y: 19, type: 'trainer', name: '반바지소년', defeated: false, battleStarted: false, direction: 'right',
               pokemon: [
-                { name: '꼬렛', level: 8, hp: 26, maxHp: 26, attack: 10, defense: 9, speed: 12, type: 'normal' },
-                { name: '꼬렛', level: 9, hp: 28, maxHp: 28, attack: 11, defense: 10, speed: 13, type: 'normal' }
+                { name: '꼬렛', level: 8, hp: 26, maxHp: 26, attack: 10, defense: 9, speed: 12, type: 'normal',
+                  moves: [
+                    { name: '몸통박치기', power: 40, type: 'normal' },
+                    { name: '꼬리흔들기', power: 0, type: 'normal' }
+                  ]
+                },
+                { name: '꼬렛', level: 9, hp: 28, maxHp: 28, attack: 11, defense: 10, speed: 13, type: 'normal',
+                  moves: [
+                    { name: '몸통박치기', power: 40, type: 'normal' },
+                    { name: '전광석화', power: 40, type: 'normal' }
+                  ]
+                }
               ]
             },
             // 체육관 관장
-            { x: 7, y: 7, type: 'gym_leader', name: '웅이', defeated: false, direction: 'down',
+            { x: 7, y: 7, type: 'gym_leader', name: '웅이', defeated: false, battleStarted: false, direction: 'down',
               badge: 'boulder',
               pokemon: [
-                { name: '꼬마돌', level: 12, hp: 40, maxHp: 40, attack: 25, defense: 30, speed: 10, type: 'rock' },
-                { name: '롱스톤', level: 14, hp: 50, maxHp: 50, attack: 30, defense: 35, speed: 12, type: 'rock' }
+                { name: '꼬마돌', level: 12, hp: 40, maxHp: 40, attack: 25, defense: 30, speed: 10, type: 'rock',
+                  moves: [
+                    { name: '몸통박치기', power: 40, type: 'normal' },
+                    { name: '둥글게말기', power: 0, type: 'rock' }
+                  ]
+                },
+                { name: '롱스톤', level: 14, hp: 50, maxHp: 50, attack: 30, defense: 35, speed: 12, type: 'rock',
+                  moves: [
+                    { name: '바위떨구기', power: 50, type: 'rock' },
+                    { name: '몸통박치기', power: 40, type: 'normal' }
+                  ]
+                }
               ]
             },
             // 포켓몬 센터 간호사
-            { x: 27, y: 7, type: 'nurse', name: '간호사', defeated: false, direction: 'down' }
+            { x: 27, y: 7, type: 'nurse', name: '간호사', defeated: false, battleStarted: false, direction: 'down' }
         ];
     }
 
@@ -300,22 +330,20 @@ class PokemonYellow {
             if (npc.defeated) {
                 this.showDialog(`${npc.name}: 다음에 또 승부하자!`);
             } else {
-                const isGym = npc.type === 'gym_leader';
-                const msg = isGym ?
-                    `체육관 관장 ${npc.name}이(가) 승부를 걸어왔다!` :
-                    `${npc.name}이(가) 승부를 걸어왔다!`;
-                this.showDialog(msg);
-                setTimeout(() => {
-                    this.startTrainerBattle(npc);
-                }, 1500);
+                // 즉시 전투 시작
+                this.startTrainerBattle(npc);
             }
         }
     }
 
     checkTrainerSight() {
+        // 이미 전투 중이거나 전투 준비 중이면 무시
+        if (this.gameState !== 'overworld') return;
+
         for (let npc of this.npcs) {
             if (npc.type !== 'trainer' && npc.type !== 'gym_leader') continue;
             if (npc.defeated) continue;
+            if (npc.battleStarted) continue; // 이미 전투 시작된 트레이너
 
             const sightRange = 3;
             let inSight = false;
@@ -344,10 +372,8 @@ class PokemonYellow {
             }
 
             if (inSight) {
-                this.showDialog(`${npc.name}: 거기 서라!`);
-                setTimeout(() => {
-                    this.startTrainerBattle(npc);
-                }, 1500);
+                npc.battleStarted = true; // 플래그 설정
+                this.startTrainerBattle(npc);
                 break;
             }
         }
@@ -513,55 +539,156 @@ class PokemonYellow {
         const px = Math.floor(x * this.tileSize);
         const py = Math.floor(y * this.tileSize);
 
+        // 실제 포켓몬 스타일 플레이어 (Red/Ash)
+        // 모자 (빨간색)
         this.ctx.fillStyle = GB_COLORS.RED;
-        this.ctx.fillRect(px + 3, py + 1, 10, 5);
-        this.ctx.fillRect(px + 2, py + 2, 12, 4);
+        this.ctx.fillRect(px + 2, py + 1, 12, 3);
+        this.ctx.fillRect(px + 3, py, 10, 2);
+        this.ctx.fillRect(px + 1, py + 2, 14, 2);
+
+        // 모자 흰색 로고
         this.ctx.fillStyle = GB_COLORS.WHITE;
-        this.ctx.fillRect(px + 4, py + 3, 8, 2);
-        this.ctx.fillStyle = GB_COLORS.LIGHT;
-        this.ctx.fillRect(px + 5, py + 6, 6, 5);
+        this.ctx.fillRect(px + 5, py + 2, 6, 2);
+
+        // 모자 그림자
+        this.ctx.fillStyle = GB_COLORS.DARK;
+        this.ctx.fillRect(px + 3, py + 4, 10, 1);
+
+        // 얼굴/피부
+        this.ctx.fillStyle = '#ffc896';
+        this.ctx.fillRect(px + 4, py + 5, 8, 6);
+        this.ctx.fillRect(px + 3, py + 6, 10, 4);
+
+        // 머리카락 (검은색)
         this.ctx.fillStyle = GB_COLORS.BLACK;
-        this.ctx.fillRect(px + 6, py + 8, 1, 1);
-        this.ctx.fillRect(px + 9, py + 8, 1, 1);
+        this.ctx.fillRect(px + 3, py + 5, 2, 2);
+        this.ctx.fillRect(px + 11, py + 5, 2, 2);
+
+        // 눈
+        this.ctx.fillStyle = GB_COLORS.BLACK;
+        this.ctx.fillRect(px + 5, py + 7, 2, 2);
+        this.ctx.fillRect(px + 9, py + 7, 2, 2);
+
+        // 입
+        this.ctx.fillRect(px + 7, py + 9, 2, 1);
+
+        // 몸통 (빨간 재킷)
         this.ctx.fillStyle = GB_COLORS.RED;
-        this.ctx.fillRect(px + 4, py + 11, 8, 6);
-        this.ctx.fillRect(px + 2, py + 12, 3, 4);
-        this.ctx.fillRect(px + 11, py + 12, 3, 4);
+        this.ctx.fillRect(px + 3, py + 11, 10, 7);
+
+        // 재킷 디테일 (어두운 부분)
+        this.ctx.fillStyle = '#c00000';
+        this.ctx.fillRect(px + 4, py + 12, 8, 1);
+        this.ctx.fillRect(px + 7, py + 11, 2, 6);
+
+        // 팔
+        this.ctx.fillStyle = GB_COLORS.RED;
+        this.ctx.fillRect(px + 1, py + 12, 3, 5);
+        this.ctx.fillRect(px + 12, py + 12, 3, 5);
+
+        // 손
+        this.ctx.fillStyle = '#ffc896';
+        this.ctx.fillRect(px + 1, py + 16, 2, 2);
+        this.ctx.fillRect(px + 13, py + 16, 2, 2);
+
+        // 바지 (파란색)
         this.ctx.fillStyle = GB_COLORS.BLUE;
-        this.ctx.fillRect(px + 5, py + 17, 3, 5);
-        this.ctx.fillRect(px + 8, py + 17, 3, 5);
+        this.ctx.fillRect(px + 4, py + 18, 4, 5);
+        this.ctx.fillRect(px + 8, py + 18, 4, 5);
+
+        // 신발 (검은색)
         this.ctx.fillStyle = GB_COLORS.BLACK;
-        this.ctx.fillRect(px + 4, py + 21, 4, 2);
-        this.ctx.fillRect(px + 8, py + 21, 4, 2);
+        this.ctx.fillRect(px + 3, py + 22, 5, 2);
+        this.ctx.fillRect(px + 8, py + 22, 5, 2);
     }
 
     drawPikachu(x, y) {
         const px = Math.floor(x * this.tileSize);
         const py = Math.floor(y * this.tileSize);
 
+        // 실제 포켓몬 옐로우 피카츄 스타일
+        // 귀 (번개 모양)
         this.ctx.fillStyle = GB_COLORS.YELLOW;
-        this.ctx.fillRect(px + 2, py + 1, 3, 8);
-        this.ctx.fillRect(px + 11, py + 1, 3, 8);
+        this.ctx.fillRect(px + 1, py, 4, 2);
+        this.ctx.fillRect(px + 2, py + 2, 3, 3);
+        this.ctx.fillRect(px + 3, py + 5, 2, 3);
+
+        this.ctx.fillRect(px + 11, py, 4, 2);
+        this.ctx.fillRect(px + 11, py + 2, 3, 3);
+        this.ctx.fillRect(px + 11, py + 5, 2, 3);
+
+        // 귀 끝 (검은색)
         this.ctx.fillStyle = GB_COLORS.BLACK;
-        this.ctx.fillRect(px + 2, py + 1, 3, 3);
-        this.ctx.fillRect(px + 11, py + 1, 3, 3);
+        this.ctx.fillRect(px + 1, py, 4, 1);
+        this.ctx.fillRect(px + 11, py, 4, 1);
+
+        // 머리
         this.ctx.fillStyle = GB_COLORS.YELLOW;
-        this.ctx.fillRect(px + 4, py + 5, 8, 6);
+        this.ctx.fillRect(px + 4, py + 4, 8, 7);
         this.ctx.fillRect(px + 3, py + 6, 10, 5);
+
+        // 얼굴 윤곽
+        this.ctx.fillStyle = GB_COLORS.YELLOW_DARK;
+        this.ctx.fillRect(px + 3, py + 6, 1, 4);
+        this.ctx.fillRect(px + 12, py + 6, 1, 4);
+
+        // 눈
         this.ctx.fillStyle = GB_COLORS.BLACK;
-        this.ctx.fillRect(px + 5, py + 8, 2, 2);
-        this.ctx.fillRect(px + 9, py + 8, 2, 2);
+        this.ctx.fillRect(px + 5, py + 7, 2, 3);
+        this.ctx.fillRect(px + 9, py + 7, 2, 3);
+
+        // 눈 하이라이트
+        this.ctx.fillStyle = GB_COLORS.WHITE;
+        this.ctx.fillRect(px + 6, py + 8, 1, 1);
+        this.ctx.fillRect(px + 10, py + 8, 1, 1);
+
+        // 볼 (빨간색)
         this.ctx.fillStyle = GB_COLORS.RED;
-        this.ctx.fillRect(px + 3, py + 9, 2, 2);
-        this.ctx.fillRect(px + 11, py + 9, 2, 2);
+        this.ctx.fillRect(px + 2, py + 9, 3, 3);
+        this.ctx.fillRect(px + 11, py + 9, 3, 3);
+
+        // 코
+        this.ctx.fillStyle = GB_COLORS.BLACK;
+        this.ctx.fillRect(px + 7, py + 9, 2, 1);
+
+        // 입
+        this.ctx.fillStyle = GB_COLORS.BLACK;
+        this.ctx.fillRect(px + 6, py + 10, 1, 1);
+        this.ctx.fillRect(px + 9, py + 10, 1, 1);
+        this.ctx.fillRect(px + 7, py + 10, 2, 1);
+
+        // 몸통
         this.ctx.fillStyle = GB_COLORS.YELLOW;
-        this.ctx.fillRect(px + 4, py + 11, 8, 7);
-        this.ctx.fillRect(px + 2, py + 12, 3, 4);
-        this.ctx.fillRect(px + 11, py + 12, 3, 4);
-        this.ctx.fillRect(px + 5, py + 18, 2, 4);
-        this.ctx.fillRect(px + 9, py + 18, 2, 4);
-        this.ctx.fillRect(px + 12, py + 9, 3, 6);
-        this.ctx.fillRect(px + 13, py + 7, 2, 4);
+        this.ctx.fillRect(px + 4, py + 11, 8, 8);
+        this.ctx.fillRect(px + 3, py + 13, 10, 4);
+
+        // 몸통 그림자
+        this.ctx.fillStyle = GB_COLORS.YELLOW_DARK;
+        this.ctx.fillRect(px + 5, py + 17, 6, 1);
+
+        // 팔
+        this.ctx.fillStyle = GB_COLORS.YELLOW;
+        this.ctx.fillRect(px + 1, py + 12, 4, 5);
+        this.ctx.fillRect(px + 11, py + 12, 4, 5);
+
+        // 다리
+        this.ctx.fillRect(px + 4, py + 19, 3, 4);
+        this.ctx.fillRect(px + 9, py + 19, 3, 4);
+
+        // 발
+        this.ctx.fillStyle = GB_COLORS.YELLOW_DARK;
+        this.ctx.fillRect(px + 3, py + 22, 4, 2);
+        this.ctx.fillRect(px + 9, py + 22, 4, 2);
+
+        // 꼬리 (번개 모양)
+        this.ctx.fillStyle = GB_COLORS.YELLOW;
+        this.ctx.fillRect(px + 12, py + 8, 3, 8);
+        this.ctx.fillRect(px + 13, py + 5, 2, 5);
+        this.ctx.fillRect(px + 14, py + 3, 2, 4);
+
+        // 꼬리 끝
+        this.ctx.fillStyle = GB_COLORS.YELLOW_DARK;
+        this.ctx.fillRect(px + 14, py + 3, 2, 1);
     }
 
     drawNPC(npc) {
@@ -569,35 +696,111 @@ class PokemonYellow {
         const py = Math.floor(npc.y * this.tileSize);
 
         if (npc.type === 'trainer' || npc.type === 'gym_leader') {
-            const color = npc.type === 'gym_leader' ? GB_COLORS.PURPLE : GB_COLORS.BLUE;
+            const isGym = npc.type === 'gym_leader';
+            const shirtColor = isGym ? GB_COLORS.ORANGE : '#4080ff';
+            const pantsColor = isGym ? GB_COLORS.BLACK : '#308030';
 
-            // 머리
-            this.ctx.fillStyle = GB_COLORS.BROWN;
-            this.ctx.fillRect(px + 5, py + 2, 6, 6);
+            // 모자 (트레이너)
+            if (!isGym) {
+                this.ctx.fillStyle = '#ff4040';
+                this.ctx.fillRect(px + 4, py + 1, 8, 3);
+                this.ctx.fillRect(px + 3, py + 2, 10, 2);
+            }
 
-            // 몸통
-            this.ctx.fillStyle = color;
-            this.ctx.fillRect(px + 4, py + 8, 8, 8);
+            // 머리/얼굴
+            this.ctx.fillStyle = '#ffc896';
+            this.ctx.fillRect(px + 5, py + 4, 6, 6);
+            this.ctx.fillRect(px + 4, py + 5, 8, 4);
 
-            // 다리
-            this.ctx.fillRect(px + 5, py + 16, 2, 4);
-            this.ctx.fillRect(px + 9, py + 16, 2, 4);
+            // 머리카락
+            this.ctx.fillStyle = isGym ? GB_COLORS.BLACK : GB_COLORS.BROWN;
+            this.ctx.fillRect(px + 4, py + 3, 8, 2);
+            if (isGym) {
+                this.ctx.fillRect(px + 3, py + 4, 2, 3);
+                this.ctx.fillRect(px + 11, py + 4, 2, 3);
+            }
+
+            // 눈
+            this.ctx.fillStyle = GB_COLORS.BLACK;
+            this.ctx.fillRect(px + 5, py + 6, 2, 2);
+            this.ctx.fillRect(px + 9, py + 6, 2, 2);
+
+            // 입
+            this.ctx.fillRect(px + 7, py + 8, 2, 1);
+
+            // 몸통 (셔츠)
+            this.ctx.fillStyle = shirtColor;
+            this.ctx.fillRect(px + 3, py + 10, 10, 7);
+
+            // 팔
+            this.ctx.fillRect(px + 1, py + 11, 3, 5);
+            this.ctx.fillRect(px + 12, py + 11, 3, 5);
+
+            // 바지
+            this.ctx.fillStyle = pantsColor;
+            this.ctx.fillRect(px + 4, py + 17, 4, 5);
+            this.ctx.fillRect(px + 8, py + 17, 4, 5);
+
+            // 신발
+            this.ctx.fillStyle = GB_COLORS.BLACK;
+            this.ctx.fillRect(px + 3, py + 21, 5, 2);
+            this.ctx.fillRect(px + 8, py + 21, 5, 2);
 
             // 시야 표시 (느낌표)
-            if (!npc.defeated) {
+            if (!npc.defeated && !npc.battleStarted) {
                 this.ctx.fillStyle = GB_COLORS.RED;
-                this.ctx.fillRect(px + 6, py - 4, 2, 3);
-                this.ctx.fillRect(px + 6, py - 1, 2, 1);
+                this.ctx.fillRect(px + 7, py - 5, 2, 4);
+                this.ctx.fillRect(px + 7, py - 1, 2, 1);
             }
         } else if (npc.type === 'nurse') {
-            // 간호사
-            this.ctx.fillStyle = GB_COLORS.LIGHT;
-            this.ctx.fillRect(px + 5, py + 2, 6, 6);
+            // 간호사 조이 스타일
+            // 모자
             this.ctx.fillStyle = GB_COLORS.WHITE;
-            this.ctx.fillRect(px + 4, py + 8, 8, 8);
+            this.ctx.fillRect(px + 4, py + 1, 8, 3);
             this.ctx.fillStyle = GB_COLORS.RED;
-            this.ctx.fillRect(px + 6, py + 3, 4, 1);
-            this.ctx.fillRect(px + 7, py + 2, 2, 3);
+            this.ctx.fillRect(px + 7, py + 1, 2, 1);
+
+            // 얼굴
+            this.ctx.fillStyle = '#ffc896';
+            this.ctx.fillRect(px + 5, py + 4, 6, 6);
+            this.ctx.fillRect(px + 4, py + 5, 8, 4);
+
+            // 분홍 머리
+            this.ctx.fillStyle = '#ff80c0';
+            this.ctx.fillRect(px + 3, py + 5, 2, 4);
+            this.ctx.fillRect(px + 11, py + 5, 2, 4);
+            this.ctx.fillRect(px + 4, py + 9, 8, 2);
+
+            // 눈
+            this.ctx.fillStyle = GB_COLORS.BLACK;
+            this.ctx.fillRect(px + 5, py + 6, 2, 2);
+            this.ctx.fillRect(px + 9, py + 6, 2, 2);
+
+            // 입 (미소)
+            this.ctx.fillRect(px + 6, py + 8, 4, 1);
+
+            // 흰색 유니폼
+            this.ctx.fillStyle = GB_COLORS.WHITE;
+            this.ctx.fillRect(px + 3, py + 11, 10, 8);
+
+            // 빨간 십자
+            this.ctx.fillStyle = GB_COLORS.RED;
+            this.ctx.fillRect(px + 7, py + 13, 2, 4);
+            this.ctx.fillRect(px + 6, py + 14, 4, 2);
+
+            // 팔
+            this.ctx.fillStyle = GB_COLORS.WHITE;
+            this.ctx.fillRect(px + 1, py + 12, 3, 4);
+            this.ctx.fillRect(px + 12, py + 12, 3, 4);
+
+            // 치마
+            this.ctx.fillStyle = '#ff80c0';
+            this.ctx.fillRect(px + 3, py + 19, 10, 3);
+
+            // 다리
+            this.ctx.fillStyle = '#ffc896';
+            this.ctx.fillRect(px + 5, py + 22, 2, 2);
+            this.ctx.fillRect(px + 9, py + 22, 2, 2);
         }
     }
 
