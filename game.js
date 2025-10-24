@@ -1,20 +1,19 @@
-// 포켓몬스터 Yellow 버전 - 실제 그래픽 스타일
+// 포켓몬스터 Yellow 버전 - 완전판
 // Game Boy Color 팔레트
 const GB_COLORS = {
     WHITE: '#ffffff',
     LIGHT: '#c0c0c0',
     DARK: '#606060',
     BLACK: '#000000',
-    // 풀/필드 색상
     GRASS_LIGHT: '#88d850',
     GRASS_DARK: '#5ca84e',
-    // 피카츄 색상
     YELLOW: '#f8d030',
     YELLOW_DARK: '#f0b020',
-    // 기타
     RED: '#f83028',
     BLUE: '#3890f8',
-    BROWN: '#a85820'
+    BROWN: '#a85820',
+    PURPLE: '#a040a0',
+    ORANGE: '#f08030'
 };
 
 class PokemonYellow {
@@ -22,11 +21,9 @@ class PokemonYellow {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
 
-        // 게임보이 해상도 (160x144)
         this.baseWidth = 160;
         this.baseHeight = 144;
 
-        // 화면 크기에 맞게 스케일 계산
         this.updateCanvasSize();
         window.addEventListener('resize', () => this.updateCanvasSize());
 
@@ -34,37 +31,47 @@ class PokemonYellow {
 
         // 플레이어
         this.player = {
-            x: 10,
-            y: 10,
+            x: 15,
+            y: 20,
             direction: 'down',
-            animFrame: 0
+            animFrame: 0,
+            money: 3000
         };
 
         // 피카츄
         this.pikachu = {
-            x: 10,
-            y: 11,
+            x: 15,
+            y: 21,
             direction: 'down',
-            targetX: 10,
-            targetY: 11,
-            animFrame: 0
+            targetX: 15,
+            targetY: 21
         };
 
         // 파티
         this.party = [{
             name: '피카츄',
-            level: 5,
-            hp: 20,
-            maxHp: 20,
-            attack: 12,
-            defense: 8,
-            speed: 18,
-            type: 'electric'
+            level: 10,
+            hp: 35,
+            maxHp: 35,
+            attack: 20,
+            defense: 12,
+            speed: 25,
+            type: 'electric',
+            moves: [
+                { name: '전기충격', power: 40, type: 'electric', pp: 30, maxPp: 30 },
+                { name: '몸통박치기', power: 40, type: 'normal', pp: 35, maxPp: 35 },
+                { name: '전광석화', power: 40, type: 'normal', pp: 30, maxPp: 30 },
+                { name: '10만볼트', power: 90, type: 'electric', pp: 15, maxPp: 15 }
+            ]
         }];
 
         // 맵
         this.map = this.generateMap();
         this.tileSize = 16;
+
+        // NPC 및 트레이너
+        this.npcs = this.generateNPCs();
+        this.defeatedTrainers = new Set();
 
         // 카메라
         this.camera = { x: 0, y: 0 };
@@ -76,6 +83,9 @@ class PokemonYellow {
 
         // 전투
         this.battle = null;
+
+        // 배지
+        this.badges = [];
 
         this.setupControls();
         this.gameLoop(0);
@@ -97,7 +107,7 @@ class PokemonYellow {
     }
 
     generateMap() {
-        const w = 30, h = 30;
+        const w = 40, h = 40;
         const map = [];
 
         for (let y = 0; y < h; y++) {
@@ -105,20 +115,69 @@ class PokemonYellow {
             for (let x = 0; x < w; x++) {
                 if (x === 0 || x === w-1 || y === 0 || y === h-1) {
                     row.push(2); // 나무
-                } else if ((x >= 8 && x <= 15 && y >= 8 && y <= 12) ||
-                          (x >= 10 && x <= 13 && y >= 5 && y <= 20)) {
-                    row.push(1); // 길
-                } else if (x >= 3 && x <= 6 && y >= 3 && y <= 6) {
-                    row.push(4); // 건물
-                } else if (Math.random() < 0.3 && x > 2 && x < w-2 && y > 2 && y < h-2) {
-                    row.push(3); // 긴 풀
-                } else {
+                }
+                // 체육관 (왼쪽 위)
+                else if (x >= 5 && x <= 10 && y >= 5 && y <= 9) {
+                    row.push(6); // 체육관
+                }
+                // 포켓몬 센터 (오른쪽 위)
+                else if (x >= 25 && x <= 30 && y >= 5 && y <= 9) {
+                    row.push(5); // 포켓몬 센터
+                }
+                // 길
+                else if ((x >= 11 && x <= 24 && y >= 7 && y <= 9) ||
+                         (x >= 13 && x <= 16 && y >= 5 && y <= 25) ||
+                         (x >= 10 && x <= 20 && y >= 18 && y <= 20)) {
+                    row.push(1);
+                }
+                // 집들
+                else if ((x >= 18 && x <= 21 && y >= 12 && y <= 15) ||
+                         (x >= 25 && x <= 28 && y >= 22 && y <= 25)) {
+                    row.push(4);
+                }
+                // 긴 풀
+                else if (Math.random() < 0.25 && x > 2 && x < w-2 && y > 10 && y < h-2) {
+                    row.push(3);
+                }
+                else {
                     row.push(0); // 일반 풀
                 }
             }
             map.push(row);
         }
         return map;
+    }
+
+    generateNPCs() {
+        return [
+            // 트레이너들
+            { x: 14, y: 15, type: 'trainer', name: '꼬마', defeated: false, direction: 'down',
+              pokemon: [
+                { name: '뿔충이', level: 9, hp: 28, maxHp: 28, attack: 12, defense: 10, speed: 15, type: 'bug' }
+              ]
+            },
+            { x: 15, y: 22, type: 'trainer', name: '단발소녀', defeated: false, direction: 'left',
+              pokemon: [
+                { name: '참새', level: 10, hp: 30, maxHp: 30, attack: 15, defense: 8, speed: 18, type: 'flying' }
+              ]
+            },
+            { x: 18, y: 19, type: 'trainer', name: '반바지소년', defeated: false, direction: 'right',
+              pokemon: [
+                { name: '꼬렛', level: 8, hp: 26, maxHp: 26, attack: 10, defense: 9, speed: 12, type: 'normal' },
+                { name: '꼬렛', level: 9, hp: 28, maxHp: 28, attack: 11, defense: 10, speed: 13, type: 'normal' }
+              ]
+            },
+            // 체육관 관장
+            { x: 7, y: 7, type: 'gym_leader', name: '웅이', defeated: false, direction: 'down',
+              badge: 'boulder',
+              pokemon: [
+                { name: '꼬마돌', level: 12, hp: 40, maxHp: 40, attack: 25, defense: 30, speed: 10, type: 'rock' },
+                { name: '롱스톤', level: 14, hp: 50, maxHp: 50, attack: 30, defense: 35, speed: 12, type: 'rock' }
+              ]
+            },
+            // 포켓몬 센터 간호사
+            { x: 27, y: 7, type: 'nurse', name: '간호사', defeated: false, direction: 'down' }
+        ];
     }
 
     setupControls() {
@@ -128,6 +187,13 @@ class PokemonYellow {
 
             if (this.gameState === 'battle' && this.battle) {
                 this.battle.handleInput(e.key);
+                return;
+            }
+
+            if (this.gameState === 'dialog') {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'z') {
+                    this.closeDialog();
+                }
                 return;
             }
 
@@ -161,6 +227,11 @@ class PokemonYellow {
                         this.player.direction = 'right';
                         moved = true;
                         break;
+                    case 'Enter':
+                    case ' ':
+                    case 'z':
+                        this.interact();
+                        return;
                 }
 
                 if (moved && this.canMove(newX, newY)) {
@@ -169,15 +240,28 @@ class PokemonYellow {
                     this.pikachu.targetY = this.player.y;
                     this.player.x = newX;
                     this.player.y = newY;
-                    this.player.animFrame = (this.player.animFrame + 1) % 2;
 
                     setTimeout(() => {
                         this.pikachu.x = this.pikachu.targetX;
                         this.pikachu.y = this.pikachu.targetY;
                     }, 75);
 
+                    // 트레이너 시야 체크
+                    this.checkTrainerSight();
+
+                    // 긴 풀에서 랜덤 인카운터
                     if (this.map[newY][newX] === 3 && Math.random() < 0.15) {
-                        setTimeout(() => this.startBattle(), 200);
+                        setTimeout(() => this.startWildBattle(), 200);
+                    }
+
+                    // 체육관 입장
+                    if (this.map[newY][newX] === 6) {
+                        this.showDialog('체육관에 오신 것을 환영합니다!');
+                    }
+
+                    // 포켓몬 센터
+                    if (this.map[newY][newX] === 5) {
+                        this.healParty();
                     }
                 }
             }
@@ -188,38 +272,156 @@ class PokemonYellow {
         });
     }
 
+    interact() {
+        // 앞에 있는 NPC와 상호작용
+        let frontX = this.player.x;
+        let frontY = this.player.y;
+
+        switch(this.player.direction) {
+            case 'up': frontY--; break;
+            case 'down': frontY++; break;
+            case 'left': frontX--; break;
+            case 'right': frontX++; break;
+        }
+
+        const npc = this.npcs.find(n => n.x === frontX && n.y === frontY);
+        if (npc) {
+            this.interactWithNPC(npc);
+        }
+    }
+
+    interactWithNPC(npc) {
+        if (npc.type === 'nurse') {
+            this.healParty();
+            return;
+        }
+
+        if (npc.type === 'trainer' || npc.type === 'gym_leader') {
+            if (npc.defeated) {
+                this.showDialog(`${npc.name}: 다음에 또 승부하자!`);
+            } else {
+                const isGym = npc.type === 'gym_leader';
+                const msg = isGym ?
+                    `체육관 관장 ${npc.name}이(가) 승부를 걸어왔다!` :
+                    `${npc.name}이(가) 승부를 걸어왔다!`;
+                this.showDialog(msg);
+                setTimeout(() => {
+                    this.startTrainerBattle(npc);
+                }, 1500);
+            }
+        }
+    }
+
+    checkTrainerSight() {
+        for (let npc of this.npcs) {
+            if (npc.type !== 'trainer' && npc.type !== 'gym_leader') continue;
+            if (npc.defeated) continue;
+
+            const sightRange = 3;
+            let inSight = false;
+
+            switch(npc.direction) {
+                case 'up':
+                    inSight = npc.x === this.player.x &&
+                             this.player.y < npc.y &&
+                             npc.y - this.player.y <= sightRange;
+                    break;
+                case 'down':
+                    inSight = npc.x === this.player.x &&
+                             this.player.y > npc.y &&
+                             this.player.y - npc.y <= sightRange;
+                    break;
+                case 'left':
+                    inSight = npc.y === this.player.y &&
+                             this.player.x < npc.x &&
+                             npc.x - this.player.x <= sightRange;
+                    break;
+                case 'right':
+                    inSight = npc.y === this.player.y &&
+                             this.player.x > npc.x &&
+                             this.player.x - npc.x <= sightRange;
+                    break;
+            }
+
+            if (inSight) {
+                this.showDialog(`${npc.name}: 거기 서라!`);
+                setTimeout(() => {
+                    this.startTrainerBattle(npc);
+                }, 1500);
+                break;
+            }
+        }
+    }
+
+    healParty() {
+        this.party.forEach(p => {
+            p.hp = p.maxHp;
+            if (p.moves) {
+                p.moves.forEach(m => m.pp = m.maxPp);
+            }
+        });
+        this.showDialog('포켓몬들이 완전히 회복되었습니다!');
+    }
+
+    showDialog(text) {
+        this.gameState = 'dialog';
+        this.dialogText = text;
+    }
+
+    closeDialog() {
+        this.gameState = 'overworld';
+        this.dialogText = null;
+    }
+
     canMove(x, y) {
         if (x < 0 || x >= this.map[0].length || y < 0 || y >= this.map.length) {
             return false;
         }
         const tile = this.map[y][x];
+
+        // NPC 충돌 체크
+        const npc = this.npcs.find(n => n.x === x && n.y === y);
+        if (npc) return false;
+
         return tile !== 2 && tile !== 4;
     }
 
-    startBattle() {
-        this.gameState = 'battle';
+    startWildBattle() {
         const wildPokemon = this.getRandomWildPokemon();
-        this.battle = new Battle(this, wildPokemon);
+        this.gameState = 'battle';
+        this.battle = new Battle(this, wildPokemon, 'wild');
+    }
+
+    startTrainerBattle(trainer) {
+        this.gameState = 'battle';
+        this.battle = new Battle(this, trainer.pokemon[0], 'trainer', trainer);
     }
 
     getRandomWildPokemon() {
         const wilds = [
-            { name: '꼬렛', level: 2, type: 'normal', hp: 15, atk: 8, def: 6, spd: 10 },
-            { name: '구구', level: 3, type: 'flying', hp: 18, atk: 9, def: 7, spd: 11 },
-            { name: '캐터피', level: 2, type: 'bug', hp: 20, atk: 5, def: 5, spd: 7 },
-            { name: '뿔충이', level: 3, type: 'bug', hp: 18, atk: 7, def: 6, spd: 8 }
+            { name: '꼬렛', level: 3, type: 'normal', hp: 18, atk: 10, def: 8, spd: 12 },
+            { name: '구구', level: 5, type: 'flying', hp: 22, atk: 12, def: 10, spd: 14 },
+            { name: '캐터피', level: 3, type: 'bug', hp: 25, atk: 8, def: 8, spd: 10 },
+            { name: '뿔충이', level: 4, type: 'bug', hp: 20, atk: 10, def: 9, spd: 11 },
+            { name: '참새', level: 5, type: 'flying', hp: 20, atk: 14, def: 8, spd: 16 }
         ];
 
         const chosen = wilds[Math.floor(Math.random() * wilds.length)];
+        const level = chosen.level + Math.floor(Math.random() * 3);
+
         return {
             name: chosen.name,
-            level: chosen.level + Math.floor(Math.random() * 2),
-            hp: chosen.hp + chosen.level * 2,
-            maxHp: chosen.hp + chosen.level * 2,
-            attack: chosen.atk + chosen.level,
+            level: level,
+            hp: chosen.hp + level * 2,
+            maxHp: chosen.hp + level * 2,
+            attack: chosen.atk + level,
             defense: chosen.def,
             speed: chosen.spd,
-            type: chosen.type
+            type: chosen.type,
+            moves: [
+                { name: '몸통박치기', power: 40, type: 'normal' },
+                { name: '할퀴기', power: 35, type: 'normal' }
+            ]
         };
     }
 
@@ -246,7 +448,6 @@ class PokemonYellow {
             case 0: // 일반 풀
                 this.ctx.fillStyle = GB_COLORS.GRASS_LIGHT;
                 this.ctx.fillRect(px, py, size, size);
-                // 풀 디테일
                 this.ctx.fillStyle = GB_COLORS.GRASS_DARK;
                 if ((x + y) % 2 === 0) {
                     this.ctx.fillRect(px + 2, py + 4, 2, 3);
@@ -266,10 +467,8 @@ class PokemonYellow {
             case 2: // 나무
                 this.ctx.fillStyle = GB_COLORS.GRASS_DARK;
                 this.ctx.fillRect(px, py, size, size);
-                // 나무 몸통
                 this.ctx.fillStyle = GB_COLORS.BROWN;
                 this.ctx.fillRect(px + 6, py + 8, 4, 6);
-                // 나무 잎
                 this.ctx.fillStyle = GB_COLORS.GRASS_DARK;
                 this.ctx.fillRect(px + 3, py + 2, 10, 8);
                 this.ctx.fillStyle = GB_COLORS.BLACK;
@@ -278,7 +477,6 @@ class PokemonYellow {
             case 3: // 긴 풀
                 this.ctx.fillStyle = GB_COLORS.GRASS_DARK;
                 this.ctx.fillRect(px, py, size, size);
-                // 긴 풀 디테일
                 this.ctx.fillStyle = GB_COLORS.GRASS_LIGHT;
                 for (let i = 0; i < 5; i++) {
                     this.ctx.fillRect(px + 2 + i * 3, py + 3, 2, 8);
@@ -292,6 +490,22 @@ class PokemonYellow {
                 this.ctx.fillStyle = GB_COLORS.BLACK;
                 this.ctx.fillRect(px + 6, py + 8, 4, 6);
                 break;
+            case 5: // 포켓몬 센터
+                this.ctx.fillStyle = GB_COLORS.RED;
+                this.ctx.fillRect(px, py, size, size);
+                this.ctx.fillStyle = GB_COLORS.WHITE;
+                this.ctx.fillRect(px + 4, py + 4, 8, 8);
+                this.ctx.fillStyle = GB_COLORS.RED;
+                this.ctx.fillRect(px + 6, py + 6, 4, 4);
+                break;
+            case 6: // 체육관
+                this.ctx.fillStyle = GB_COLORS.DARK;
+                this.ctx.fillRect(px, py, size, size);
+                this.ctx.fillStyle = GB_COLORS.ORANGE;
+                this.ctx.fillRect(px + 2, py + 2, size - 4, size - 4);
+                this.ctx.fillStyle = GB_COLORS.BLACK;
+                this.ctx.fillRect(px + 6, py + 8, 4, 6);
+                break;
         }
     }
 
@@ -299,39 +513,23 @@ class PokemonYellow {
         const px = Math.floor(x * this.tileSize);
         const py = Math.floor(y * this.tileSize);
 
-        // 모자 (빨간색)
         this.ctx.fillStyle = GB_COLORS.RED;
         this.ctx.fillRect(px + 3, py + 1, 10, 5);
         this.ctx.fillRect(px + 2, py + 2, 12, 4);
-
-        // 모자 흰색 부분
         this.ctx.fillStyle = GB_COLORS.WHITE;
         this.ctx.fillRect(px + 4, py + 3, 8, 2);
-
-        // 얼굴
         this.ctx.fillStyle = GB_COLORS.LIGHT;
         this.ctx.fillRect(px + 5, py + 6, 6, 5);
-
-        // 눈
         this.ctx.fillStyle = GB_COLORS.BLACK;
         this.ctx.fillRect(px + 6, py + 8, 1, 1);
         this.ctx.fillRect(px + 9, py + 8, 1, 1);
-
-        // 몸통 (빨간색 셔츠)
         this.ctx.fillStyle = GB_COLORS.RED;
         this.ctx.fillRect(px + 4, py + 11, 8, 6);
-
-        // 팔
-        this.ctx.fillStyle = GB_COLORS.RED;
         this.ctx.fillRect(px + 2, py + 12, 3, 4);
         this.ctx.fillRect(px + 11, py + 12, 3, 4);
-
-        // 바지 (파란색)
         this.ctx.fillStyle = GB_COLORS.BLUE;
         this.ctx.fillRect(px + 5, py + 17, 3, 5);
         this.ctx.fillRect(px + 8, py + 17, 3, 5);
-
-        // 신발
         this.ctx.fillStyle = GB_COLORS.BLACK;
         this.ctx.fillRect(px + 4, py + 21, 4, 2);
         this.ctx.fillRect(px + 8, py + 21, 4, 2);
@@ -341,61 +539,80 @@ class PokemonYellow {
         const px = Math.floor(x * this.tileSize);
         const py = Math.floor(y * this.tileSize);
 
-        // 귀
         this.ctx.fillStyle = GB_COLORS.YELLOW;
         this.ctx.fillRect(px + 2, py + 1, 3, 8);
         this.ctx.fillRect(px + 11, py + 1, 3, 8);
         this.ctx.fillStyle = GB_COLORS.BLACK;
         this.ctx.fillRect(px + 2, py + 1, 3, 3);
         this.ctx.fillRect(px + 11, py + 1, 3, 3);
-
-        // 머리
         this.ctx.fillStyle = GB_COLORS.YELLOW;
         this.ctx.fillRect(px + 4, py + 5, 8, 6);
         this.ctx.fillRect(px + 3, py + 6, 10, 5);
-
-        // 눈
         this.ctx.fillStyle = GB_COLORS.BLACK;
         this.ctx.fillRect(px + 5, py + 8, 2, 2);
         this.ctx.fillRect(px + 9, py + 8, 2, 2);
-
-        // 볼 (빨간색)
         this.ctx.fillStyle = GB_COLORS.RED;
         this.ctx.fillRect(px + 3, py + 9, 2, 2);
         this.ctx.fillRect(px + 11, py + 9, 2, 2);
-
-        // 몸통
         this.ctx.fillStyle = GB_COLORS.YELLOW;
         this.ctx.fillRect(px + 4, py + 11, 8, 7);
-
-        // 팔
         this.ctx.fillRect(px + 2, py + 12, 3, 4);
         this.ctx.fillRect(px + 11, py + 12, 3, 4);
-
-        // 다리
         this.ctx.fillRect(px + 5, py + 18, 2, 4);
         this.ctx.fillRect(px + 9, py + 18, 2, 4);
-
-        // 꼬리
         this.ctx.fillRect(px + 12, py + 9, 3, 6);
         this.ctx.fillRect(px + 13, py + 7, 2, 4);
+    }
+
+    drawNPC(npc) {
+        const px = Math.floor(npc.x * this.tileSize);
+        const py = Math.floor(npc.y * this.tileSize);
+
+        if (npc.type === 'trainer' || npc.type === 'gym_leader') {
+            const color = npc.type === 'gym_leader' ? GB_COLORS.PURPLE : GB_COLORS.BLUE;
+
+            // 머리
+            this.ctx.fillStyle = GB_COLORS.BROWN;
+            this.ctx.fillRect(px + 5, py + 2, 6, 6);
+
+            // 몸통
+            this.ctx.fillStyle = color;
+            this.ctx.fillRect(px + 4, py + 8, 8, 8);
+
+            // 다리
+            this.ctx.fillRect(px + 5, py + 16, 2, 4);
+            this.ctx.fillRect(px + 9, py + 16, 2, 4);
+
+            // 시야 표시 (느낌표)
+            if (!npc.defeated) {
+                this.ctx.fillStyle = GB_COLORS.RED;
+                this.ctx.fillRect(px + 6, py - 4, 2, 3);
+                this.ctx.fillRect(px + 6, py - 1, 2, 1);
+            }
+        } else if (npc.type === 'nurse') {
+            // 간호사
+            this.ctx.fillStyle = GB_COLORS.LIGHT;
+            this.ctx.fillRect(px + 5, py + 2, 6, 6);
+            this.ctx.fillStyle = GB_COLORS.WHITE;
+            this.ctx.fillRect(px + 4, py + 8, 8, 8);
+            this.ctx.fillStyle = GB_COLORS.RED;
+            this.ctx.fillRect(px + 6, py + 3, 4, 1);
+            this.ctx.fillRect(px + 7, py + 2, 2, 3);
+        }
     }
 
     drawOverworld() {
         this.updateCamera();
 
-        // 스케일 적용
         this.ctx.save();
         this.ctx.scale(this.scale, this.scale);
 
-        // 배경
         this.ctx.fillStyle = GB_COLORS.BLACK;
         this.ctx.fillRect(0, 0, this.baseWidth, this.baseHeight);
 
         this.ctx.save();
         this.ctx.translate(-Math.floor(this.camera.x), -Math.floor(this.camera.y));
 
-        // 맵
         const startX = Math.floor(this.camera.x / this.tileSize);
         const startY = Math.floor(this.camera.y / this.tileSize);
         const endX = Math.min(startX + Math.ceil(this.baseWidth / this.tileSize) + 1, this.map[0].length);
@@ -407,10 +624,14 @@ class PokemonYellow {
             }
         }
 
-        // 피카츄
-        this.drawPikachu(this.pikachu.x, this.pikachu.y);
+        // NPC 그리기
+        for (let npc of this.npcs) {
+            if (npc.x >= startX && npc.x < endX && npc.y >= startY && npc.y < endY) {
+                this.drawNPC(npc);
+            }
+        }
 
-        // 플레이어
+        this.drawPikachu(this.pikachu.x, this.pikachu.y);
         this.drawPlayer(this.player.x, this.player.y);
 
         this.ctx.restore();
@@ -418,22 +639,68 @@ class PokemonYellow {
         // UI
         this.drawUI();
 
+        // 다이얼로그
+        if (this.gameState === 'dialog' && this.dialogText) {
+            this.drawDialog();
+        }
+
         this.ctx.restore();
     }
 
     drawUI() {
-        // 상단 정보창
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         this.ctx.fillRect(0, 0, this.baseWidth, 20);
 
         this.ctx.fillStyle = GB_COLORS.WHITE;
-        this.ctx.font = 'bold 10px monospace';
-        this.ctx.fillText(`${this.party[0].name} Lv.${this.party[0].level}`, 5, 12);
-        this.ctx.fillText(`HP: ${this.party[0].hp}/${this.party[0].maxHp}`, 80, 12);
+        this.ctx.font = 'bold 8px monospace';
+        this.ctx.fillText(`${this.party[0].name} Lv${this.party[0].level}`, 3, 10);
+        this.ctx.fillText(`HP:${this.party[0].hp}/${this.party[0].maxHp}`, 70, 10);
+        this.ctx.fillText(`₩${this.player.money}`, 3, 18);
+
+        // 배지
+        if (this.badges.length > 0) {
+            this.ctx.fillText(`🏅${this.badges.length}`, 130, 10);
+        }
+    }
+
+    drawDialog() {
+        const boxH = 30;
+        const boxY = this.baseHeight - boxH - 5;
+
+        this.ctx.fillStyle = GB_COLORS.WHITE;
+        this.ctx.fillRect(5, boxY, this.baseWidth - 10, boxH);
+        this.ctx.strokeStyle = GB_COLORS.BLACK;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(5, boxY, this.baseWidth - 10, boxH);
+
+        this.ctx.fillStyle = GB_COLORS.BLACK;
+        this.ctx.font = 'bold 8px monospace';
+
+        const words = this.dialogText.split(' ');
+        let line = '';
+        let y = boxY + 12;
+
+        for (let word of words) {
+            const testLine = line + word + ' ';
+            if (this.ctx.measureText(testLine).width > this.baseWidth - 20) {
+                this.ctx.fillText(line, 10, y);
+                line = word + ' ';
+                y += 10;
+            } else {
+                line = testLine;
+            }
+        }
+        this.ctx.fillText(line, 10, y);
+
+        // 화살표
+        if (Math.floor(Date.now() / 500) % 2 === 0) {
+            this.ctx.fillStyle = GB_COLORS.BLACK;
+            this.ctx.fillRect(this.baseWidth - 15, boxY + boxH - 10, 6, 3);
+        }
     }
 
     render() {
-        if (this.gameState === 'overworld') {
+        if (this.gameState === 'overworld' || this.gameState === 'dialog') {
             this.drawOverworld();
         } else if (this.gameState === 'battle' && this.battle) {
             this.battle.render();
@@ -448,30 +715,39 @@ class PokemonYellow {
 
 // 전투 시스템
 class Battle {
-    constructor(game, wildPokemon) {
+    constructor(game, enemyPokemon, battleType = 'wild', trainer = null) {
         this.game = game;
-        this.enemy = wildPokemon;
+        this.enemy = {...enemyPokemon};
         this.player = {...game.party[0]};
+        this.battleType = battleType;
+        this.trainer = trainer;
+        this.trainerPokemonIndex = 0;
 
         this.state = 'intro';
-        this.message = `야생의 ${this.enemy.name}이(가)\n나타났다!`;
-        this.waitingForInput = false;
+        this.message = battleType === 'trainer' ?
+            `${trainer.name}이(가) 승부를 걸어왔다!\n가라! ${this.enemy.name}!` :
+            `야생의 ${this.enemy.name}이(가)\n나타났다!`;
+        this.waitingForInput = true;
 
         this.menuCursor = 0;
         this.fightCursor = 0;
 
-        this.moves = [
-            { name: '전기충격', power: 40, type: 'electric' },
-            { name: '몸통박치기', power: 35, type: 'normal' },
-            { name: '꼬리흔들기', power: 0, type: 'status' },
-            { name: '울음소리', power: 0, type: 'status' }
-        ];
-
         this.enemyHpDisplay = this.enemy.hp;
         this.playerHpDisplay = this.player.hp;
+
+        this.resultShown = false;
     }
 
     handleInput(key) {
+        if (this.state === 'intro') {
+            if (key === 'Enter' || key === ' ' || key === 'z') {
+                this.state = 'menu';
+                this.message = '무엇을 할까?';
+                this.waitingForInput = true;
+            }
+            return;
+        }
+
         if (!this.waitingForInput) return;
 
         if (this.state === 'menu') {
@@ -499,85 +775,119 @@ class Battle {
                 this.selectMove();
             } else if (key === 'Escape' || key === 'x') {
                 this.state = 'menu';
+                this.message = '무엇을 할까?';
             }
-        } else if (key === 'Enter' || key === ' ' || key === 'z') {
-            this.advanceMessage();
         }
     }
 
     selectMenu() {
         this.waitingForInput = false;
         switch(this.menuCursor) {
-            case 0:
+            case 0: // FIGHT
                 this.state = 'fight_menu';
                 this.waitingForInput = true;
                 break;
-            case 1:
+            case 1: // PKMN
                 this.message = '다른 포켓몬이 없습니다!';
                 setTimeout(() => {
                     this.state = 'menu';
+                    this.message = '무엇을 할까?';
                     this.waitingForInput = true;
-                }, 1000);
+                }, 1200);
                 break;
-            case 2:
+            case 2: // ITEM
                 this.message = '도구가 없습니다!';
                 setTimeout(() => {
                     this.state = 'menu';
+                    this.message = '무엇을 할까?';
                     this.waitingForInput = true;
-                }, 1000);
+                }, 1200);
                 break;
-            case 3:
+            case 3: // RUN
                 this.tryRun();
                 break;
         }
     }
 
     selectMove() {
-        const move = this.moves[this.fightCursor];
+        const move = this.player.moves[this.fightCursor];
+        if (!move || move.pp <= 0) {
+            this.message = 'PP가 부족합니다!';
+            setTimeout(() => {
+                this.state = 'fight_menu';
+                this.waitingForInput = true;
+            }, 1000);
+            return;
+        }
+
         this.waitingForInput = false;
         this.state = 'attack';
         this.playerAttack(move);
     }
 
     playerAttack(move) {
+        move.pp--;
         this.message = `피카츄의\n${move.name}!`;
 
         setTimeout(() => {
-            if (move.power > 0) {
-                const damage = this.calculateDamage(this.player, this.enemy, move);
-                this.enemy.hp = Math.max(0, this.enemy.hp - damage);
-                this.animateHPBar('enemy', damage);
+            const damage = this.calculateDamage(this.player, this.enemy, move);
+            this.enemy.hp = Math.max(0, this.enemy.hp - damage);
+            this.animateHPBar('enemy', damage);
 
-                if (this.enemy.hp <= 0) {
-                    setTimeout(() => this.win(), 1000);
-                } else {
-                    setTimeout(() => this.enemyTurn(), 1000);
-                }
+            if (this.enemy.hp <= 0) {
+                setTimeout(() => {
+                    this.enemyFainted();
+                }, 1200);
             } else {
-                setTimeout(() => this.enemyTurn(), 800);
+                setTimeout(() => this.enemyTurn(), 1200);
             }
         }, 1000);
     }
 
     enemyTurn() {
         this.state = 'enemy_turn';
-        this.message = `${this.enemy.name}의\n몸통박치기!`;
+        const enemyMove = this.enemy.moves[Math.floor(Math.random() * this.enemy.moves.length)];
+        this.message = `${this.enemy.name}의\n${enemyMove.name}!`;
 
         setTimeout(() => {
-            const damage = Math.floor(Math.random() * 8) + 4;
+            const damage = this.calculateDamage(this.enemy, this.player, enemyMove);
             this.player.hp = Math.max(0, this.player.hp - damage);
             this.animateHPBar('player', damage);
 
             if (this.player.hp <= 0) {
-                setTimeout(() => this.lose(), 1000);
+                setTimeout(() => this.lose(), 1200);
             } else {
                 setTimeout(() => {
                     this.state = 'menu';
                     this.message = '무엇을 할까?';
                     this.waitingForInput = true;
-                }, 1000);
+                }, 1200);
             }
         }, 1000);
+    }
+
+    enemyFainted() {
+        this.message = `${this.enemy.name}은(는)\n쓰러졌다!`;
+
+        if (this.battleType === 'trainer' && this.trainer) {
+            // 트레이너의 다음 포켓몬 확인
+            this.trainerPokemonIndex++;
+            if (this.trainerPokemonIndex < this.trainer.pokemon.length) {
+                setTimeout(() => {
+                    this.enemy = {...this.trainer.pokemon[this.trainerPokemonIndex]};
+                    this.enemyHpDisplay = this.enemy.hp;
+                    this.message = `${this.trainer.name}이(가)\n${this.enemy.name}을(를) 꺼냈다!`;
+                    setTimeout(() => {
+                        this.state = 'menu';
+                        this.message = '무엇을 할까?';
+                        this.waitingForInput = true;
+                    }, 1500);
+                }, 1500);
+                return;
+            }
+        }
+
+        setTimeout(() => this.win(), 1500);
     }
 
     animateHPBar(who, damage) {
@@ -600,18 +910,38 @@ class Battle {
     }
 
     calculateDamage(attacker, defender, move) {
+        if (move.power === 0) return 0;
+
         const level = attacker.level;
         const attack = attacker.attack;
         const defense = defender.defense;
         const power = move.power;
 
         let damage = ((2 * level / 5 + 2) * power * attack / defense) / 50 + 2;
-        damage = Math.floor(damage * (Math.random() * 0.15 + 0.85));
 
+        // 타입 상성
+        if (move.type === 'electric' && (defender.type === 'flying' || defender.type === 'water')) {
+            damage *= 2;
+        }
+        if (move.type === 'electric' && (defender.type === 'grass' || defender.type === 'rock' || defender.type === 'ground')) {
+            damage *= 0.5;
+        }
+
+        damage = Math.floor(damage * (Math.random() * 0.15 + 0.85));
         return Math.max(1, Math.floor(damage));
     }
 
     tryRun() {
+        if (this.battleType === 'trainer') {
+            this.message = '트레이너전에서는\n도망칠 수 없다!';
+            setTimeout(() => {
+                this.state = 'menu';
+                this.message = '무엇을 할까?';
+                this.waitingForInput = true;
+            }, 1500);
+            return;
+        }
+
         if (Math.random() < 0.5) {
             this.message = '무사히 도망쳤다!';
             setTimeout(() => this.end(), 1500);
@@ -622,28 +952,41 @@ class Battle {
     }
 
     win() {
-        this.message = `야생의 ${this.enemy.name}을(를)\n쓰러뜨렸다!`;
+        const exp = this.enemy.level * 20;
+        const money = this.enemy.level * 50;
+
+        if (this.battleType === 'trainer') {
+            this.message = `${this.trainer.name}을(를)\n이겼다!\n상금 ₩${money}을 받았다!`;
+            this.game.player.money += money;
+            this.trainer.defeated = true;
+
+            // 체육관 관장을 이겼다면 배지 획득
+            if (this.trainer.type === 'gym_leader' && this.trainer.badge) {
+                setTimeout(() => {
+                    this.game.badges.push(this.trainer.badge);
+                    this.message = `${this.trainer.badge} 배지를\n획득했다!`;
+                    setTimeout(() => this.end(), 2000);
+                }, 2000);
+                return;
+            }
+        } else {
+            this.message = `야생의 ${this.enemy.name}을(를)\n쓰러뜨렸다!`;
+        }
+
         this.game.party[0].hp = this.player.hp;
-        setTimeout(() => this.end(), 2000);
+        setTimeout(() => this.end(), 2500);
     }
 
     lose() {
         this.message = '눈앞이 캄캄해졌다!';
         this.game.party[0].hp = this.game.party[0].maxHp;
-        setTimeout(() => this.end(), 2000);
+        this.game.player.money = Math.floor(this.game.player.money / 2);
+        setTimeout(() => this.end(), 2500);
     }
 
     end() {
         this.game.gameState = 'overworld';
         this.game.battle = null;
-    }
-
-    advanceMessage() {
-        if (this.state === 'intro') {
-            this.state = 'menu';
-            this.message = '무엇을 할까?';
-            this.waitingForInput = true;
-        }
     }
 
     render() {
@@ -656,47 +999,38 @@ class Battle {
         const h = this.game.baseHeight;
 
         // 배경
-        ctx.fillStyle = GB_COLORS.WHITE;
-        ctx.fillRect(0, 0, w, h);
-
-        // 그라데이션 배경
         const gradient = ctx.createLinearGradient(0, 0, 0, h);
         gradient.addColorStop(0, '#87CEEB');
         gradient.addColorStop(1, '#90EE90');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, w, h);
 
-        // 적 포켓몬 플랫폼
+        // 플랫폼
         ctx.fillStyle = GB_COLORS.DARK;
         ctx.fillRect(100, 50, 40, 4);
         ctx.fillStyle = GB_COLORS.BLACK;
         ctx.fillRect(100, 54, 40, 2);
 
-        // 플레이어 포켓몬 플랫폼
         ctx.fillStyle = GB_COLORS.BROWN;
         ctx.fillRect(20, 90, 45, 4);
         ctx.fillStyle = GB_COLORS.BLACK;
         ctx.fillRect(20, 94, 45, 2);
 
-        // 적 포켓몬
+        // 포켓몬
         this.drawEnemyPokemon(110, 25);
-
-        // 플레이어 피카츄
         this.drawPlayerPikachu(30, 65);
 
-        // 적 정보창
+        // 정보창
         this.drawInfoBox(80, 10, 70, 22, this.enemy.name, this.enemy.level, this.enemyHpDisplay, this.enemy.maxHp, false);
-
-        // 플레이어 정보창
         this.drawInfoBox(10, 58, 70, 28, this.player.name, this.player.level, this.playerHpDisplay, this.player.maxHp, true);
 
         // 메시지 박스
         this.drawTextBox(5, h - 40, w - 10, 35);
         const lines = this.message.split('\n');
         ctx.fillStyle = GB_COLORS.BLACK;
-        ctx.font = 'bold 10px monospace';
+        ctx.font = 'bold 8px monospace';
         lines.forEach((line, i) => {
-            ctx.fillText(line, 12, h - 26 + i * 12);
+            ctx.fillText(line, 12, h - 26 + i * 10);
         });
 
         // 메뉴
@@ -718,36 +1052,31 @@ class Battle {
     drawInfoBox(x, y, w, h, name, level, hp, maxHp, showHpNum) {
         const ctx = this.game.ctx;
 
-        // 박스
         ctx.fillStyle = GB_COLORS.WHITE;
         ctx.fillRect(x, y, w, h);
         ctx.strokeStyle = GB_COLORS.BLACK;
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, w, h);
 
-        // 텍스트
         ctx.fillStyle = GB_COLORS.BLACK;
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(name, x + 5, y + 12);
-        ctx.fillText(`Lv${level}`, x + w - 25, y + 12);
+        ctx.font = 'bold 8px monospace';
+        ctx.fillText(name, x + 5, y + 10);
+        ctx.fillText(`Lv${level}`, x + w - 20, y + 10);
 
-        // HP 바
-        const hpBarY = showHpNum ? y + 18 : y + 16;
+        const hpBarY = showHpNum ? y + 16 : y + 14;
         this.drawHPBar(x + 5, hpBarY, w - 10, hp, maxHp);
 
         if (showHpNum) {
-            ctx.fillText(`${Math.floor(hp)}/${maxHp}`, x + w - 35, y + 26);
+            ctx.fillText(`${Math.floor(hp)}/${maxHp}`, x + w - 30, y + 24);
         }
     }
 
     drawHPBar(x, y, w, hp, maxHp) {
         const ctx = this.game.ctx;
 
-        // 배경
         ctx.fillStyle = GB_COLORS.DARK;
         ctx.fillRect(x, y, w, 4);
 
-        // HP
         const hpWidth = Math.floor((hp / maxHp) * w);
         const hpColor = hp > maxHp * 0.5 ? '#00ff00' :
                        hp > maxHp * 0.2 ? '#ffff00' : '#ff0000';
@@ -777,17 +1106,15 @@ class Battle {
 
         const menu = ['FIGHT', 'PKMN', 'ITEM', 'RUN'];
         ctx.fillStyle = GB_COLORS.BLACK;
-        ctx.font = 'bold 10px monospace';
+        ctx.font = 'bold 8px monospace';
 
         menu.forEach((item, i) => {
             const mx = w - 72 + (i % 2) * 37;
-            const my = h - 28 + Math.floor(i / 2) * 14;
+            const my = h - 28 + Math.floor(i / 2) * 13;
             ctx.fillText(item, mx, my);
 
             if (i === this.menuCursor) {
-                ctx.fillStyle = GB_COLORS.BLACK;
-                ctx.fillRect(mx - 8, my - 6, 5, 2);
-                ctx.fillStyle = GB_COLORS.BLACK;
+                ctx.fillRect(mx - 8, my - 5, 5, 2);
             }
         });
     }
@@ -800,15 +1127,18 @@ class Battle {
         this.drawTextBox(w - 80, h - 40, 75, 35);
 
         ctx.fillStyle = GB_COLORS.BLACK;
-        ctx.font = 'bold 9px monospace';
+        ctx.font = 'bold 7px monospace';
 
-        this.moves.forEach((move, i) => {
+        this.player.moves.forEach((move, i) => {
             const mx = w - 72 + (i % 2) * 37;
-            const my = h - 28 + Math.floor(i / 2) * 14;
+            const my = h - 28 + Math.floor(i / 2) * 13;
             ctx.fillText(move.name.substring(0, 8), mx, my);
+            ctx.font = 'bold 6px monospace';
+            ctx.fillText(`${move.pp}/${move.maxPp}`, mx, my + 8);
+            ctx.font = 'bold 7px monospace';
 
             if (i === this.fightCursor) {
-                ctx.fillRect(mx - 8, my - 6, 5, 2);
+                ctx.fillRect(mx - 8, my - 5, 5, 2);
             }
         });
     }
@@ -816,57 +1146,40 @@ class Battle {
     drawEnemyPokemon(x, y) {
         const ctx = this.game.ctx;
 
-        // 몸통
         ctx.fillStyle = GB_COLORS.DARK;
         ctx.fillRect(x, y + 15, 25, 18);
-
-        // 머리
         ctx.fillRect(x + 3, y + 5, 19, 15);
-
-        // 귀
         ctx.fillRect(x + 2, y + 2, 5, 7);
         ctx.fillRect(x + 18, y + 2, 5, 7);
 
-        // 눈 (흰색)
         ctx.fillStyle = GB_COLORS.WHITE;
         ctx.fillRect(x + 6, y + 10, 5, 5);
         ctx.fillRect(x + 14, y + 10, 5, 5);
 
-        // 눈동자
         ctx.fillStyle = GB_COLORS.BLACK;
         ctx.fillRect(x + 7, y + 12, 2, 2);
         ctx.fillRect(x + 15, y + 12, 2, 2);
-
-        // 입
         ctx.fillRect(x + 10, y + 16, 5, 2);
     }
 
     drawPlayerPikachu(x, y) {
         const ctx = this.game.ctx;
 
-        // 피카츄 뒷모습
         ctx.fillStyle = GB_COLORS.YELLOW;
-
-        // 귀
         ctx.fillRect(x + 3, y, 5, 12);
         ctx.fillRect(x + 22, y, 5, 12);
         ctx.fillStyle = GB_COLORS.BLACK;
         ctx.fillRect(x + 3, y, 5, 4);
         ctx.fillRect(x + 22, y, 5, 4);
 
-        // 머리
         ctx.fillStyle = GB_COLORS.YELLOW;
         ctx.fillRect(x + 6, y + 5, 18, 10);
-
-        // 몸통
         ctx.fillRect(x + 6, y + 15, 18, 14);
 
-        // 줄무늬
         ctx.fillStyle = GB_COLORS.YELLOW_DARK;
         ctx.fillRect(x + 8, y + 20, 14, 2);
         ctx.fillRect(x + 8, y + 24, 14, 2);
 
-        // 꼬리
         ctx.fillStyle = GB_COLORS.YELLOW;
         ctx.fillRect(x + 24, y + 10, 6, 12);
         ctx.fillRect(x + 27, y + 6, 5, 10);
